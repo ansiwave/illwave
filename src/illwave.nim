@@ -1,38 +1,5 @@
-## :Authors: John Novak
-##
-## This is a *curses* inspired simple terminal library that aims to make
-## writing cross-platform text mode applications easier. The main features are:
-##
-## * Non-blocking keyboard input
-## * Support for key combinations and special keys available in the standard
-##   Windows Console (`cmd.exe`) and most common POSIX terminals
-## * Virtual terminal buffers with double-buffering support (only
-##   display changes from the previous frame and minimise the number of
-##   attribute changes to reduce CPU usage)
-## * Simple graphics using UTF-8 box drawing symbols
-## * Full-screen support with restoring the contents of the terminal after
-##   exit (restoring works only on POSIX)
-## * Basic suspend/continue (`SIGTSTP`, `SIGCONT`) support on POSIX
-## * Basic mouse support.
-##
-## The module depends only on the standard `terminal
-## <https://nim-lang.org/docs/terminal.html>`_ module. However, you
-## should not use any terminal functions directly, neither should you use
-## `echo`, `write` or other similar functions for output. You should **only**
-## use the interface provided by the module to interact with the terminal.
-##
-## The following symbols are exported from the terminal_ module (these are
-## safe to use):
-##
-## * `terminalWidth() <https://nim-lang.org/docs/terminal.html#terminalWidth>`_
-## * `terminalHeight() <https://nim-lang.org/docs/terminal.html#terminalHeight>`_
-## * `terminalSize() <https://nim-lang.org/docs/terminal.html#terminalSize>`_
-## * `hideCursor() <https://nim-lang.org/docs/terminal.html#hideCursor.t>`_
-## * `showCursor() <https://nim-lang.org/docs/terminal.html#showCursor.t>`_
-## * `Style <https://nim-lang.org/docs/terminal.html#Style>`_
-##
-
 import macros, os, terminal, unicode, bitops
+from colors import nil
 
 export terminal.terminalWidth
 export terminal.terminalHeight
@@ -250,7 +217,7 @@ type
   ScrollDirection* {.pure.} = enum
     sdNone, sdUp, sdDown
 
-var gMouseInfo = MouseInfo()
+var gMouseInfo* = MouseInfo()
 var gMouse: bool = false
 
 proc getMouse*(): MouseInfo =
@@ -288,7 +255,7 @@ func toKey(c: int): Key =
   except RangeError:  # ignore unknown keycodes
     result = Key.None
 
-var gIllwillInitialised = false
+var gIllwillInitialised* = false
 var gFullScreen = false
 var gFullRedrawNextFrame = false
 
@@ -860,7 +827,11 @@ proc getKey*(): Key =
       if hasMouseInput():
         return Key.Mouse
 
+const rgbNone* = (0'u, 0'u, 0'u)
+
 type
+  RGB = tuple[red: uint, green: uint, blue: uint]
+
   TerminalChar* = object
     ## Represents a character in the terminal buffer, including color and
     ## style information.
@@ -874,6 +845,9 @@ type
     bg*: BackgroundColor
     style*: set[Style]
     forceWrite*: bool
+    fgTruecolor*: RGB
+    bgTruecolor*: RGB
+    cursor*: bool
 
   TerminalBuffer* = ref object
     ## A virtual terminal buffer of a fixed width and height. It remembers the
@@ -921,25 +895,27 @@ type
     currBg: BackgroundColor
     currFg: ForegroundColor
     currStyle: set[Style]
-    currX: Natural
-    currY: Natural
+    currX: int
+    currY: int
+    currFgTruecolor*: RGB
+    currBgTruecolor*: RGB
 
-proc `[]=`*(tb: var TerminalBuffer, x, y: Natural, ch: TerminalChar) =
+proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   ## Index operator to write a character into the terminal buffer at the
   ## specified location. Does nothing if the location is outside of the
   ## extents of the terminal buffer.
-  if x < tb.width and y < tb.height:
+  if x < tb.width and y < tb.height and x >= 0 and y >= 0:
     tb.buf[tb.width * y + x] = ch
 
-proc `[]`*(tb: TerminalBuffer, x, y: Natural): TerminalChar =
+proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   ## Index operator to read a character from the terminal buffer at the
   ## specified location. Returns nil if the location is outside of the extents
   ## of the terminal buffer.
-  if x < tb.width and y < tb.height:
+  if x < tb.width and y < tb.height and x >= 0 and y >= 0:
     result = tb.buf[tb.width * y + x]
 
 
-proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: Natural, ch: string = " ") =
+proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: int, ch: string = " ") =
   ## Fills a rectangular area with the `ch` character using the current text
   ## attributes. The rectangle is clipped to the extends of the terminal
   ## buffer and the call can never fail.
@@ -1025,45 +1001,42 @@ proc newTerminalBufferFrom*(src: TerminalBuffer): TerminalBuffer =
   tb.copyFrom(src)
   result = tb
 
-proc setCursorPos*(tb: var TerminalBuffer, x, y: Natural) =
+proc setCursorPos*(tb: var TerminalBuffer, x, y: int) =
   ## Sets the current cursor position.
   tb.currX = x
   tb.currY = y
 
-proc setCursorXPos*(tb: var TerminalBuffer, x: Natural) =
+proc setCursorXPos*(tb: var TerminalBuffer, x: int) =
   ## Sets the current x cursor position.
   tb.currX = x
 
-proc setCursorYPos*(tb: var TerminalBuffer, y: Natural) =
+proc setCursorYPos*(tb: var TerminalBuffer, y: int) =
   ## Sets the current y cursor position.
   tb.currY = y
 
-proc setBackgroundColor*(tb: var TerminalBuffer, bg: BackgroundColor) =
-  ## Sets the current background color.
+proc setBackgroundColor*(tb: var TerminalBuffer, bg: BackgroundColor,
+                         bgTruecolor: RGB = rgbNone) =
   tb.currBg = bg
+  tb.currBgTruecolor = bgTruecolor
 
 proc setForegroundColor*(tb: var TerminalBuffer, fg: ForegroundColor,
-                         bright: bool = false) =
-  ## Sets the current foreground color and the bright style flag.
-  if bright:
-    incl(tb.currStyle, styleBright)
-  else:
-    excl(tb.currStyle, styleBright)
+                         fgTruecolor: RGB = rgbNone) =
   tb.currFg = fg
+  tb.currFgTruecolor = fgTruecolor
 
 proc setStyle*(tb: var TerminalBuffer, style: set[Style]) =
   ## Sets the current style flags.
   tb.currStyle = style
 
-func getCursorPos*(tb: TerminalBuffer): tuple[x: Natural, y: Natural] =
+func getCursorPos*(tb: TerminalBuffer): tuple[x: int, y: int] =
   ## Returns the current cursor position.
   result = (tb.currX, tb.currY)
 
-func getCursorXPos*(tb: TerminalBuffer): Natural =
+func getCursorXPos*(tb: TerminalBuffer): int =
   ## Returns the current x cursor position.
   result = tb.currX
 
-func getCursorYPos*(tb: TerminalBuffer): Natural =
+func getCursorYPos*(tb: TerminalBuffer): int =
   ## Returns the current y cursor position.
   result = tb.currY
 
@@ -1086,7 +1059,7 @@ proc resetAttributes*(tb: var TerminalBuffer) =
   tb.setForegroundColor(fgWhite)
   tb.setStyle({})
 
-proc write*(tb: var TerminalBuffer, x, y: Natural, s: string) =
+proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
   ## Writes `s` into the terminal buffer at the specified position using
   ## the current text attributes. Lines do not wrap and attempting to write
   ## outside the extents of the buffer will not raise an error; the output
@@ -1109,13 +1082,17 @@ var
   gPrevTerminalBuffer {.threadvar.}: TerminalBuffer
   gCurrBg {.threadvar.}: BackgroundColor
   gCurrFg {.threadvar.}: ForegroundColor
+  gCurrBgTruecolor {.threadvar.}: RGB
+  gCurrFgTruecolor {.threadvar.}: RGB
   gCurrStyle {.threadvar.}: set[Style]
 
 proc setAttribs(c: TerminalChar) =
-  if c.bg == bgNone or c.fg == fgNone or c.style == {}:
+  if (c.bgTruecolor == rgbNone and c.fgTruecolor == rgbNone) and (c.bg == bgNone or c.fg == fgNone or c.style == {}):
     resetAttributes()
     gCurrBg = c.bg
     gCurrFg = c.fg
+    gCurrBgTruecolor = c.bgTruecolor
+    gCurrFgTruecolor = c.fgTruecolor
     gCurrStyle = c.style
     if gCurrBg != bgNone:
       setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg))
@@ -1124,20 +1101,40 @@ proc setAttribs(c: TerminalChar) =
     if gCurrStyle != {}:
       setStyle(gCurrStyle)
   else:
-    if c.bg != gCurrBg:
+    if isTruecolorSupported() and c.bgTruecolor != rgbNone:
+      if c.bgTruecolor != gCurrBgTruecolor:
+        gCurrBgTruecolor = c.bgTruecolor
+        gCurrBg = bgNone
+        let rgb =
+          c.bgTruecolor.red.rotateLeftBits(16) +
+          c.bgTruecolor.green.rotateLeftBits(8) +
+          c.bgTruecolor.blue
+        setBackgroundColor(colors.Color(rgb))
+    elif c.bg != gCurrBg:
+      gCurrBgTruecolor = rgbNone
       gCurrBg = c.bg
       setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg))
-    if c.fg != gCurrFg:
+    if isTruecolorSupported() and c.fgTruecolor != rgbNone:
+      if c.fgTruecolor != gCurrFgTruecolor:
+        gCurrFgTruecolor = c.fgTruecolor
+        gCurrFg = fgNone
+        let rgb =
+          c.fgTruecolor.red.rotateLeftBits(16) +
+          c.fgTruecolor.green.rotateLeftBits(8) +
+          c.fgTruecolor.blue
+        setForegroundColor(colors.Color(rgb))
+    elif c.fg != gCurrFg:
+      gCurrFgTruecolor = rgbNone
       gCurrFg = c.fg
       setForegroundColor(cast[terminal.ForegroundColor](gCurrFg))
     if c.style != gCurrStyle:
       gCurrStyle = c.style
       setStyle(gCurrStyle)
 
-proc setPos(x, y: Natural) =
+proc setPos(x, y: int) =
   terminal.setCursorPos(x, y)
 
-proc setXPos(x: Natural) =
+proc setXPos(x: int) =
   terminal.setCursorXPos(x)
 
 proc displayFull(tb: TerminalBuffer) =
@@ -1152,7 +1149,7 @@ proc displayFull(tb: TerminalBuffer) =
     setPos(0, y)
     for x in 0..<tb.width:
       let c = tb[x,y]
-      if c.bg != gCurrBg or c.fg != gCurrFg or c.style != gCurrStyle:
+      if c.bg != gCurrBg or c.fg != gCurrFg or c.bgTruecolor != gCurrBgTruecolor or c.fgTruecolor != gCurrFgTruecolor or c.style != gCurrStyle:
         flushBuf()
         setAttribs(c)
       buf &= $c.ch
@@ -1185,7 +1182,7 @@ proc displayDiff(tb: TerminalBuffer) =
     for x in 0..<tb.width:
       let c = tb[x,y]
       if c != gPrevTerminalBuffer[x,y] or c.forceWrite:
-        if c.bg != gCurrBg or c.fg != gCurrFg or c.style != gCurrStyle:
+        if c.bg != gCurrBg or c.fg != gCurrFg or c.bgTruecolor != gCurrBgTruecolor or c.fgTruecolor != gCurrFgTruecolor or c.style != gCurrStyle:
           flushBuf()
           bufXPos = x
           setAttribs(c)
@@ -1345,12 +1342,12 @@ func height*(bb: BoxBuffer): Natural =
   ## Returns the height of the box buffer.
   result = bb.height
 
-proc `[]=`(bb: var BoxBuffer, x, y: Natural, c: BoxChar) =
-  if x < bb.width and y < bb.height:
+proc `[]=`(bb: var BoxBuffer, x, y: int, c: BoxChar) =
+  if x < bb.width and y < bb.height and x >= 0 and y >= 0:
     bb.buf[bb.width * y + x] = c
 
-func `[]`(bb: BoxBuffer, x, y: Natural): BoxChar =
-  if x < bb.width and y < bb.height:
+func `[]`(bb: BoxBuffer, x, y: int): BoxChar =
+  if x < bb.width and y < bb.height and x >= 0 and y >= 0:
     result = bb.buf[bb.width * y + x]
 
 proc copyFrom*(bb: var BoxBuffer,
@@ -1392,7 +1389,7 @@ proc newBoxBufferFrom*(src: BoxBuffer): BoxBuffer =
   bb.copyFrom(src)
   result = bb
 
-proc drawHorizLine*(bb: var BoxBuffer, x1, x2, y: Natural,
+proc drawHorizLine*(bb: var BoxBuffer, x1, x2, y: int,
                     doubleStyle: bool = false, connect: bool = true) =
   ## Draws a horizontal line into the box buffer. Set `doubleStyle` to `true`
   ## to draw double lines. Set `connect` to `true` to connect overlapping
@@ -1423,7 +1420,7 @@ proc drawHorizLine*(bb: var BoxBuffer, x1, x2, y: Natural,
       bb[x,y] = h
 
 
-proc drawVertLine*(bb: var BoxBuffer, x, y1, y2: Natural,
+proc drawVertLine*(bb: var BoxBuffer, x, y1, y2: int,
                    doubleStyle: bool = false, connect: bool = true) =
   ## Draws a vertical line into the box buffer. Set `doubleStyle` to `true` to
   ## draw double lines. Set `connect` to `true` to connect overlapping lines.
@@ -1453,7 +1450,7 @@ proc drawVertLine*(bb: var BoxBuffer, x, y1, y2: Natural,
       bb[x,y] = v
 
 
-proc drawRect*(bb: var BoxBuffer, x1, y1, x2, y2: Natural,
+proc drawRect*(bb: var BoxBuffer, x1, y1, x2, y2: int,
                doubleStyle: bool = false, connect: bool = true) =
   ## Draws a rectangle into the box buffer. Set `doubleStyle` to `true` to
   ## draw double lines. Set `connect` to `true` to connect overlapping lines.
@@ -1599,7 +1596,7 @@ macro write*(tb: var TerminalBuffer, args: varargs[typed]): untyped =
       result.add(newCall(bindSym"writeProcessArg", tb, item))
 
 
-proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: Natural,
+proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: int,
                     doubleStyle: bool = false) =
   ## Convenience method to draw a single horizontal line into a terminal
   ## buffer directly.
@@ -1607,7 +1604,7 @@ proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: Natural,
   bb.drawHorizLine(x1, x2, y, doubleStyle)
   tb.write(bb)
 
-proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: Natural,
+proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: int,
                    doubleStyle: bool = false) =
   ## Convenience method to draw a single vertical line into a terminal buffer
   ## directly.
@@ -1615,7 +1612,7 @@ proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: Natural,
   bb.drawVertLine(x, y1, y2, doubleStyle)
   tb.write(bb)
 
-proc drawRect*(tb: var TerminalBuffer, x1, y1, x2, y2: Natural,
+proc drawRect*(tb: var TerminalBuffer, x1, y1, x2, y2: int,
                doubleStyle: bool = false) =
   ## Convenience method to draw a rectangle into a terminal buffer directly.
   var bb = newBoxBuffer(tb.width, tb.height)
