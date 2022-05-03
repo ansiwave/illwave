@@ -31,11 +31,6 @@ type
     bgCyan,                 ## cyan
     bgWhite                 ## white
 
-  RGB* = object
-    red*: uint8
-    green*: uint8
-    blue*: uint8
-
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
     None = (-1, "None"),
 
@@ -841,14 +836,14 @@ type
     of SimpleColor:
       simpleColor*: SimpleBackgroundColor
     of TrueColor:
-      trueColor*: RGB
+      trueColor*: colors.Color
 
   ForegroundColor* = object
     case kind*: ColorKind
     of SimpleColor:
       simpleColor*: SimpleForegroundColor
     of TrueColor:
-      trueColor*: RGB
+      trueColor*: colors.Color
 
   TerminalChar* = object
     ## Represents a character in the terminal buffer, including color and
@@ -922,7 +917,7 @@ proc `==`*(a, b: BackgroundColor): bool =
     of SimpleColor:
       a.simpleColor == b.simpleColor
     of TrueColor:
-      a.trueColor == b.trueColor
+      a.trueColor.ord == b.trueColor.ord
 
 proc `==`*(a, b: ForegroundColor): bool =
   if a.kind != b.kind:
@@ -932,7 +927,7 @@ proc `==`*(a, b: ForegroundColor): bool =
     of SimpleColor:
       a.simpleColor == b.simpleColor
     of TrueColor:
-      a.trueColor == b.trueColor
+      a.trueColor.ord == b.trueColor.ord
 
 proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   ## Index operator to write a character into the terminal buffer at the
@@ -1060,10 +1055,10 @@ proc setBackgroundColor*(tb: var TerminalBuffer, bg: SimpleBackgroundColor) =
 proc setForegroundColor*(tb: var TerminalBuffer, fg: SimpleForegroundColor) =
   tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: fg)
 
-proc setBackgroundColor*(tb: var TerminalBuffer, bg: RGB) =
+proc setBackgroundColor*(tb: var TerminalBuffer, bg: colors.Color) =
   tb.currBg = BackgroundColor(kind: TrueColor, trueColor: bg)
 
-proc setForegroundColor*(tb: var TerminalBuffer, fg: RGB) =
+proc setForegroundColor*(tb: var TerminalBuffer, fg: colors.Color) =
   tb.currFg = ForegroundColor(kind: TrueColor, trueColor: fg)
 
 proc setStyle*(tb: var TerminalBuffer, style: set[Style]) =
@@ -1142,11 +1137,7 @@ proc setAttribs(c: TerminalChar) =
     if c.bg.kind == TrueColor:
       if c.bg != gCurrBg:
         gCurrBg = c.bg
-        let rgb: uint =
-          c.bg.trueColor.red.uint.rotateLeftBits(16) +
-          c.bg.trueColor.green.uint.rotateLeftBits(8) +
-          c.bg.trueColor.blue.uint
-        setBackgroundColor(colors.Color(rgb))
+        setBackgroundColor(c.bg.trueColor)
     elif c.bg.kind == SimpleColor:
       if c.bg != gCurrBg:
         gCurrBg = c.bg
@@ -1154,11 +1145,7 @@ proc setAttribs(c: TerminalChar) =
     if c.fg.kind == TrueColor:
       if c.fg != gCurrFg:
         gCurrFg = c.fg
-        let rgb: uint =
-          c.fg.trueColor.red.uint.rotateLeftBits(16) +
-          c.fg.trueColor.green.uint.rotateLeftBits(8) +
-          c.fg.trueColor.blue.uint
-        setForegroundColor(colors.Color(rgb))
+        setForegroundColor(c.bg.trueColor)
     elif c.fg.kind == SimpleColor:
       if c.fg != gCurrFg:
         gCurrFg = c.fg
