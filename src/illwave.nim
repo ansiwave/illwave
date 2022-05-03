@@ -2,13 +2,6 @@ import macros, os, unicode, bitops
 from colors import nil
 from terminal import nil
 
-export terminal.terminalWidth
-export terminal.terminalHeight
-export terminal.terminalSize
-export terminal.hideCursor
-export terminal.showCursor
-export terminal.Style
-
 type
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
     None = (-1, "None"),
