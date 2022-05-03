@@ -1,5 +1,6 @@
-import macros, os, terminal, unicode, bitops
+import macros, os, unicode, bitops
 from colors import nil
+from terminal import nil
 
 export terminal.terminalWidth
 export terminal.terminalHeight
@@ -442,8 +443,8 @@ else:  # OS X & Linux
   proc SIGTSTP_handler(sig: cint) {.noconv.} =
     signal(SIGTSTP, SIG_DFL)
     # XXX why don't the below 3 lines seem to have any effect?
-    resetAttributes()
-    showCursor()
+    terminal.resetAttributes()
+    terminal.showCursor()
     consoleDeinit()
     discard posix.raise(SIGTSTP)
 
@@ -453,7 +454,7 @@ else:  # OS X & Linux
 
     gFullRedrawNextFrame = true
     consoleInit()
-    hideCursor()
+    terminal.hideCursor()
 
   proc installSignalHandlers() =
     signal(SIGCONT, SIGCONT_handler)
@@ -644,9 +645,9 @@ proc enterFullScreen() =
     of Xterm256Color:
       stdout.write "\e[?1049h"
     else:
-      eraseScreen()
+      terminal.eraseScreen()
   else:
-    eraseScreen()
+    terminal.eraseScreen()
 
 proc exitFullScreen() =
   ## Exits full-screen mode (restores the previous contents of the terminal).
@@ -657,9 +658,9 @@ proc exitFullScreen() =
     of Xterm256Color:
       stdout.write "\e[?1049l"
     else:
-      eraseScreen()
+      terminal.eraseScreen()
   else:
-    eraseScreen()
+    terminal.eraseScreen()
     setCursorPos(0, 0)
 
 when defined(posix):
@@ -703,7 +704,7 @@ proc illwillInit*(fullScreen: bool = true, mouse: bool = false) =
     else:
       enableMouse(getStdHandle(STD_INPUT_HANDLE))
   gIllwillInitialised = true
-  resetAttributes()
+  terminal.resetAttributes()
 
 proc checkInit() =
   if not gIllwillInitialised:
@@ -723,8 +724,8 @@ proc illwillDeinit*() =
       disableMouse(getStdHandle(STD_INPUT_HANDLE), gOldConsoleModeInput)
   consoleDeinit()
   gIllwillInitialised = false
-  resetAttributes()
-  showCursor()
+  terminal.resetAttributes()
+  terminal.showCursor()
 
 when defined(windows):
   var gLastMouseInfo = MouseInfo()
@@ -834,7 +835,7 @@ type
     ch*: Rune
     fg*: ForegroundColor
     bg*: BackgroundColor
-    style*: set[Style]
+    style*: set[terminal.Style]
     forceWrite*: bool
     cursor*: bool
 
@@ -883,7 +884,7 @@ type
     buf: seq[TerminalChar]
     currBg: BackgroundColor
     currFg: ForegroundColor
-    currStyle: set[Style]
+    currStyle: set[terminal.Style]
     currX: int
     currY: int
 
@@ -1039,7 +1040,7 @@ proc setBackgroundColor*(tb: var TerminalBuffer, bg: colors.Color) =
 proc setForegroundColor*(tb: var TerminalBuffer, fg: colors.Color) =
   tb.currFg = ForegroundColor(kind: TrueColor, trueColor: fg)
 
-proc setStyle*(tb: var TerminalBuffer, style: set[Style]) =
+proc setStyle*(tb: var TerminalBuffer, style: set[terminal.Style]) =
   ## Sets the current style flags.
   tb.currStyle = style
 
@@ -1063,7 +1064,7 @@ func getForegroundColor*(tb: var TerminalBuffer): ForegroundColor =
   ## Returns the current foreground color.
   result = tb.currFg
 
-func getStyle*(tb: var TerminalBuffer): set[Style] =
+func getStyle*(tb: var TerminalBuffer): set[terminal.Style] =
   ## Returns the current style flags.
   result = tb.currStyle
 
@@ -1071,7 +1072,7 @@ proc resetAttributes*(tb: var TerminalBuffer) =
   ## Resets the current text attributes to `bgNone`, `fgWhite` and clears
   ## all style flags.
   tb.setBackgroundColor(BackgroundColor(kind: SimpleColor, simpleColor: terminal.bgDefault))
-  tb.setForegroundColor(fgWhite)
+  tb.setForegroundColor(terminal.fgWhite)
   tb.setStyle({})
 
 proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
@@ -1097,11 +1098,11 @@ var
   gPrevTerminalBuffer {.threadvar.}: TerminalBuffer
   gCurrBg {.threadvar.}: BackgroundColor
   gCurrFg {.threadvar.}: ForegroundColor
-  gCurrStyle {.threadvar.}: set[Style]
+  gCurrStyle {.threadvar.}: set[terminal.Style]
 
 proc setAttribs(c: TerminalChar) =
   if c.bg.kind == SimpleColor and c.fg.kind == SimpleColor and (c.bg.simpleColor == terminal.bgDefault or c.fg.simpleColor == terminal.fgDefault or c.style == {}):
-    resetAttributes()
+    terminal.resetAttributes()
     gCurrBg = c.bg
     gCurrFg = c.fg
     gCurrStyle = c.style
@@ -1520,10 +1521,10 @@ type
 template writeProcessArg(tb: var TerminalBuffer, s: string) =
   tb.write(s)
 
-template writeProcessArg(tb: var TerminalBuffer, style: Style) =
+template writeProcessArg(tb: var TerminalBuffer, style: terminal.Style) =
   tb.setStyle({style})
 
-template writeProcessArg(tb: var TerminalBuffer, style: set[Style]) =
+template writeProcessArg(tb: var TerminalBuffer, style: set[terminal.Style]) =
   tb.setStyle(style)
 
 template writeProcessArg(tb: var TerminalBuffer, color: terminal.ForegroundColor) =
