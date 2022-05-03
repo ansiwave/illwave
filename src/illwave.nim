@@ -31,6 +31,11 @@ type
     bgCyan,                 ## cyan
     bgWhite                 ## white
 
+  RGB* = object
+    red*: uint8
+    green*: uint8
+    blue*: uint8
+
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
     None = (-1, "None"),
 
@@ -827,19 +832,17 @@ proc getKey*(): Key =
       if hasMouseInput():
         return Key.Mouse
 
-const rgbNone* = (0'u, 0'u, 0'u)
-
 type
-  RGB = tuple[red: uint, green: uint, blue: uint]
-
   ColorKind* = enum
     SimpleColor, TrueColor,
+
   BackgroundColor* = object
     case kind*: ColorKind
     of SimpleColor:
       simpleColor*: SimpleBackgroundColor
     of TrueColor:
       trueColor*: RGB
+
   ForegroundColor* = object
     case kind*: ColorKind
     of SimpleColor:
@@ -1139,10 +1142,10 @@ proc setAttribs(c: TerminalChar) =
     if c.bg.kind == TrueColor:
       if c.bg != gCurrBg:
         gCurrBg = c.bg
-        let rgb =
-          c.bg.trueColor.red.rotateLeftBits(16) +
-          c.bg.trueColor.green.rotateLeftBits(8) +
-          c.bg.trueColor.blue
+        let rgb: uint =
+          c.bg.trueColor.red.uint.rotateLeftBits(16) +
+          c.bg.trueColor.green.uint.rotateLeftBits(8) +
+          c.bg.trueColor.blue.uint
         setBackgroundColor(colors.Color(rgb))
     elif c.bg.kind == SimpleColor:
       if c.bg != gCurrBg:
@@ -1151,10 +1154,10 @@ proc setAttribs(c: TerminalChar) =
     if c.fg.kind == TrueColor:
       if c.fg != gCurrFg:
         gCurrFg = c.fg
-        let rgb =
-          c.fg.trueColor.red.rotateLeftBits(16) +
-          c.fg.trueColor.green.rotateLeftBits(8) +
-          c.fg.trueColor.blue
+        let rgb: uint =
+          c.fg.trueColor.red.uint.rotateLeftBits(16) +
+          c.fg.trueColor.green.uint.rotateLeftBits(8) +
+          c.fg.trueColor.blue.uint
         setForegroundColor(colors.Color(rgb))
     elif c.fg.kind == SimpleColor:
       if c.fg != gCurrFg:
