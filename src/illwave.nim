@@ -169,7 +169,7 @@ type
 
     Mouse = (5000, "Mouse")
 
-  IllwillError* = object of Exception
+  IllwaveError* = object of Exception
 
 type
   MouseButtonAction* {.pure.} = enum
@@ -193,32 +193,8 @@ var gMouseInfo* = MouseInfo()
 var gMouse: bool = false
 
 proc getMouse*(): MouseInfo =
-  ## When `illwillInit(mouse=true)` all mouse movements and clicks are captured.
+  ## When `init(mouse=true)` all mouse movements and clicks are captured.
   ## Call this to get the actual mouse informations. Also see `MouseInfo`.
-  ##
-  ## Example:
-  ##
-  ## .. code-block::
-  ##
-  ##  import illwill, os
-  ##
-  ##  proc exitProc() {.noconv.} =
-  ##    illwillDeinit()
-  ##    showCursor()
-  ##    quit(0)
-  ##
-  ##  setControlCHook(exitProc)
-  ##  illwillInit(mouse=true)
-  ##
-  ##  var tb = newTerminalBuffer(terminalWidth(), terminalHeight())
-  ##
-  ##  while true:
-  ##    var key = getKey()
-  ##    if key == Key.Mouse:
-  ##      echo getMouse()
-  ##    tb.display()
-  ##    sleep(10)
-
   return gMouseInfo
 
 func toKey(c: int): Key =
@@ -227,7 +203,7 @@ func toKey(c: int): Key =
   except RangeError:  # ignore unknown keycodes
     result = Key.None
 
-var gIllwillInitialised* = false
+var gIllwaveInitialized* = false
 var gFullScreen = false
 var gFullRedrawNextFrame = false
 
@@ -676,16 +652,16 @@ else:
   proc disableMouse(hConsoleInput: Handle, oldConsoleMode: DWORD) =
     discard setConsoleMode(hConsoleInput, oldConsoleMode) # TODO: REMOVE MOUSE OPTION ONLY?
 
-proc illwillInit*(fullScreen: bool = true, mouse: bool = false) =
+proc init*(fullScreen: bool = true, mouse: bool = false) =
   ## Initializes the terminal and enables non-blocking keyboard input. Needs
   ## to be called before doing anything with the library.
   ##
   ## If mouse is set to true, all mouse actions are captured.
   ## Call `getMouse()` in your main loop to actually retrieve them.
   ##
-  ## If the module is already intialised, `IllwillError` is raised.
-  if gIllwillInitialised:
-    raise newException(IllwillError, "Illwill already initialised")
+  ## If the module is already intialised, `IllwaveError` is raised.
+  if gIllwaveInitialized:
+    raise newException(IllwaveError, "Illwave already initialized")
   gFullScreen = fullScreen
   if gFullScreen: enterFullScreen()
 
@@ -696,18 +672,18 @@ proc illwillInit*(fullScreen: bool = true, mouse: bool = false) =
       enableMouse()
     else:
       enableMouse(getStdHandle(STD_INPUT_HANDLE))
-  gIllwillInitialised = true
+  gIllwaveInitialized = true
   terminal.resetAttributes()
 
 proc checkInit() =
-  if not gIllwillInitialised:
-    raise newException(IllwillError, "Illwill not initialised")
+  if not gIllwaveInitialized:
+    raise newException(IllwaveError, "Illwave not initialized")
 
-proc illwillDeinit*() =
+proc deinit*() =
   ## Resets the terminal to its previous state. Needs to be called before
   ## exiting the application.
   ##
-  ## If the module is not intialised, `IllwillError` is raised.
+  ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   if gFullScreen: exitFullScreen()
   if gMouse:
@@ -716,7 +692,7 @@ proc illwillDeinit*() =
     else:
       disableMouse(getStdHandle(STD_INPUT_HANDLE), gOldConsoleModeInput)
   consoleDeinit()
-  gIllwillInitialised = false
+  gIllwaveInitialized = false
   terminal.resetAttributes()
   terminal.showCursor()
 
@@ -791,7 +767,7 @@ proc getKey*(): Key =
   ## If a mouse event was captured `Key.Mouse` is returned.
   ## Call `getMouse()` to get the MouseInfo.
   ##
-  ## If the module is not intialised, `IllwillError` is raised.
+  ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   result = getKeyAsync()
   when defined(windows):
@@ -838,40 +814,6 @@ type
     ##
     ## Write to the terminal buffer with `TerminalBuffer.write()` or access
     ## the character buffer directly with the index operators.
-    ##
-    ## Example:
-    ##
-    ## .. code-block::
-    ##   import illwill, unicode
-    ##
-    ##   # Initialise the console in non-fullscreen mode
-    ##   illwillInit(fullscreen=false)
-    ##
-    ##   # Create a new terminal buffer
-    ##   var tb = newTerminalBuffer(terminalWidth(), terminalHeight())
-    ##
-    ##   # Write the character "X" at position (5,5) then read it back
-    ##   tb[5,5] = TerminalChar(ch: "X".runeAt(0), fg: fgYellow, bg: bgNone, style: {})
-    ##   let ch = tb[5,5]
-    ##
-    ##   # Write "foo" at position (10,10) in bright red
-    ##   tb.setForegroundColor(fgRed, bright=true)
-    ##   tb.setCursorPos(10, 10)
-    ##   tb.write("foo")
-    ##
-    ##   # Write "bar" at position (15,12) in bright red, without changing
-    ##   # the current cursor position
-    ##   tb.write(15, 12, "bar")
-    ##
-    ##   tb.write(0, 20, "Normal ", fgYellow, "ESC", fgWhite,
-    ##                   " or ", fgYellow, "Q", fgWhite, " to quit")
-    ##
-    ##   # Output the contents of the buffer to the terminal
-    ##   tb.display()
-    ##
-    ##   # Clean up
-    ##   illwillDeinit()
-    ##
     width: int
     height: int
     buf: seq[TerminalChar]
@@ -1194,14 +1136,14 @@ proc setDoubleBuffering*(enabled: bool) =
 proc hasDoubleBuffering*(): bool =
   ## Returns `true` if double buffering is enabled.
   ##
-  ## If the module is not intialised, `IllwillError` is raised.
+  ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   result = gDoubleBufferingEnabled
 
 proc display*(tb: TerminalBuffer) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
-  ## If the module is not intialised, `IllwillError` is raised.
+  ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   if not gFullRedrawNextFrame and gDoubleBufferingEnabled:
     if gPrevTerminalBuffer == nil:
@@ -1533,44 +1475,6 @@ template writeProcessArg(tb: var TerminalBuffer, cmd: TerminalCmd) =
 macro write*(tb: var TerminalBuffer, args: varargs[typed]): untyped =
   ## Special version of `write` that allows to intersperse text literals with
   ## set attribute commands.
-  ##
-  ## Example:
-  ##
-  ## .. code-block::
-  ##   import illwill
-  ##
-  ##   illwillInit(fullscreen=false)
-  ##
-  ##   var tb = newTerminalBuffer(terminalWidth(), terminalHeight())
-  ##
-  ##   tb.setForegroundColor(fgGreen)
-  ##   tb.setBackgroundColor(bgBlue)
-  ##   tb.write(0, 10, "before")
-  ##
-  ##   tb.write(0, 11, "unchanged", resetStyle, fgYellow, "yellow", bgRed, "red bg",
-  ##                   styleBlink, "blink", resetStyle, "reset")
-  ##
-  ##   tb.write(0, 12, "after")
-  ##
-  ##   tb.display()
-  ##
-  ##   illwillDeinit()
-  ##
-  ## This will output the following:
-  ##
-  ## * 1st row:
-  ##   - `before` with blue background, green foreground and default style
-  ## * 2nd row:
-  ##   - `unchanged` with blue background, green foreground and default style
-  ##   - `yellow` with default background, yellow foreground and default style
-  ##   - `red bg` with red background, yellow foreground and default style
-  ##   - `blink` with red background, yellow foreground and blink style (if
-  ##     supported by the terminal)
-  ##   - `reset` with the default background and foreground and default style
-  ## * 3rd row:
-  ##   - `after` with the default background and foreground and default style
-  ##
-  ##
   result = newNimNode(nnkStmtList)
 
   if args.len >= 3 and
