@@ -857,6 +857,20 @@ proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   if x < tb.width and y < tb.height and x >= 0 and y >= 0:
     result = tb.buf[tb.width * y + x]
 
+proc toColor*(r: uint8, g: uint8, b: uint8): colors.Color =
+  let rgb: uint =
+    r.uint.rotateLeftBits(16) +
+    g.uint.rotateLeftBits(8) +
+    b.uint
+  colors.Color(rgb)
+
+proc fromColor*(color: colors.Color): tuple[r: uint8, g: uint8, b: uint8] =
+  let n: uint = cast[uint](color)
+  (
+    r: n.rotateRightBits(16).uint8,
+    g: n.rotateRightBits(8).uint8,
+    b: n.uint8,
+  )
 
 proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: int, ch: string = " ") =
   ## Fills a rectangular area with the `ch` character using the current text
