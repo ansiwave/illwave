@@ -4,7 +4,8 @@ from terminal import nil
 
 type
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
-    None = (-1, "None"),
+    Mouse  = (-2, "Mouse")
+    None   = (-1, "None"),
 
     # Special ASCII characters
     CtrlA  = (1, "CtrlA"),
@@ -166,8 +167,6 @@ type
     F10 = (1020, "F10"),
     F11 = (1021, "F11"),
     F12 = (1022, "F12"),
-
-    Mouse = (5000, "Mouse")
 
   IllwaveError* = object of Exception
 
