@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "oakes"
-description   = "A curses inspired simple cross-platform console library for Nim"
+description   = "A cross-platform terminal UI library"
 license       = "WTFPL"
 srcDir        = "src"
 installExt    = @["nim"]
