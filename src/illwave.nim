@@ -807,7 +807,7 @@ type
     forceWrite*: bool
     cursor*: bool
 
-  TerminalBuffer* = ref object
+  TerminalBuffer* = object
     ## A virtual terminal buffer of a fixed width and height. It remembers the
     ## current color and style settings and the current cursor position.
     ##
@@ -892,7 +892,7 @@ proc clear*(tb: var TerminalBuffer, ch: string = " ") =
   ## the `fgNone` and `bgNone` attributes.
   tb.fill(0, 0, tb.width-1, tb.height-1, ch)
 
-proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
+proc initTerminalBuffer*(tb: var TerminalBuffer, width, height: Natural) =
   ## Initializes a new terminal buffer object of a fixed `width` and `height`.
   tb.width = width
   tb.height = height
@@ -901,12 +901,10 @@ proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: terminal.fgDefault)
   tb.currStyle = {}
 
-proc newTerminalBuffer*(width, height: Natural): TerminalBuffer =
+proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
   ## Creates a new terminal buffer of a fixed `width` and `height`.
-  var tb = new TerminalBuffer
-  tb.initTerminalBuffer(width, height)
-  tb.clear()
-  result = tb
+  result.initTerminalBuffer(width, height)
+  result.clear()
 
 func width*(tb: TerminalBuffer): Natural =
   ## Returns the width of the terminal buffer.
@@ -948,14 +946,6 @@ proc copyFrom*(tb: var TerminalBuffer, src: TerminalBuffer) =
   ## If the extents of the source buffer is greater than the extents of the
   ## destination buffer, the copied area is clipped to the destination area.
   tb.copyFrom(src, 0, 0, src.width, src.height, 0, 0)
-
-proc newTerminalBufferFrom*(src: TerminalBuffer): TerminalBuffer =
-  ## Creates a new terminal buffer with the dimensions of the `src` buffer and
-  ## copies its contents into the new buffer.
-  var tb = new TerminalBuffer
-  tb.initTerminalBuffer(src.width, src.height)
-  tb.copyFrom(src)
-  result = tb
 
 proc setCursorPos*(tb: var TerminalBuffer, x, y: int) =
   ## Sets the current cursor position.
@@ -1144,7 +1134,6 @@ var gDoubleBufferingEnabled = true
 proc setDoubleBuffering*(enabled: bool) =
   ## Enables or disables double buffering (enabled by default).
   gDoubleBufferingEnabled = enabled
-  gPrevTerminalBuffer = nil
 
 proc hasDoubleBuffering*(): bool =
   ## Returns `true` if double buffering is enabled.
@@ -1159,17 +1148,13 @@ proc display*(tb: TerminalBuffer) =
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   if not gFullRedrawNextFrame and gDoubleBufferingEnabled:
-    if gPrevTerminalBuffer == nil:
-      displayFull(tb)
-      gPrevTerminalBuffer = newTerminalBufferFrom(tb)
+    if tb.width == gPrevTerminalBuffer.width and
+       tb.height == gPrevTerminalBuffer.height:
+      displayDiff(tb)
+      gPrevTerminalBuffer.copyFrom(tb)
     else:
-      if tb.width == gPrevTerminalBuffer.width and
-         tb.height == gPrevTerminalBuffer.height:
-        displayDiff(tb)
-        gPrevTerminalBuffer.copyFrom(tb)
-      else:
-        displayFull(tb)
-        gPrevTerminalBuffer = newTerminalBufferFrom(tb)
+      displayFull(tb)
+      gPrevTerminalBuffer = tb
     flushFile(stdout)
   else:
     displayFull(tb)
@@ -1263,7 +1248,7 @@ gBoxCharsUnicode[H_DBL or V_DBL or DOWN or UP or RIGHT or LEFT] = "╬"
 
 proc toUTF8String(c: BoxChar): string = gBoxCharsUnicode[c]
 
-type BoxBuffer* = ref object
+type BoxBuffer* = object
   ## Box buffers are used to store the results of multiple consecutive box
   ## drawing calls. The idea is that when you draw a series of lines and
   ## rectangles into the buffer, the overlapping lines will get automatically
@@ -1273,9 +1258,8 @@ type BoxBuffer* = ref object
   height: Natural
   buf: seq[BoxChar]
 
-proc newBoxBuffer*(width, height: Natural): BoxBuffer =
+proc initBoxBuffer*(width, height: Natural): BoxBuffer =
   ## Creates a new box buffer of a fixed `width` and `height`.
-  result = new BoxBuffer
   result.width = width
   result.height = height
   newSeq(result.buf, width * height)
@@ -1327,13 +1311,6 @@ proc copyFrom*(bb: var BoxBuffer, src: BoxBuffer) =
   ## If the extents of the source buffer is greater than the extents of the
   ## destination buffer, the copied area is clipped to the destination area.
   bb.copyFrom(src, 0, 0, src.width, src.height, 0, 0)
-
-proc newBoxBufferFrom*(src: BoxBuffer): BoxBuffer =
-  ## Creates a new box buffer with the dimensions of the `src` buffer and
-  ## copies its contents into the new buffer.
-  var bb = new BoxBuffer
-  bb.copyFrom(src)
-  result = bb
 
 proc drawHorizLine*(bb: var BoxBuffer, x1, x2, y: int,
                     doubleStyle: bool = false, connect: bool = true) =
@@ -1508,7 +1485,7 @@ proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: int,
                     doubleStyle: bool = false) =
   ## Convenience method to draw a single horizontal line into a terminal
   ## buffer directly.
-  var bb = newBoxBuffer(tb.width, tb.height)
+  var bb = initBoxBuffer(tb.width, tb.height)
   bb.drawHorizLine(x1, x2, y, doubleStyle)
   tb.write(bb)
 
@@ -1516,13 +1493,13 @@ proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: int,
                    doubleStyle: bool = false) =
   ## Convenience method to draw a single vertical line into a terminal buffer
   ## directly.
-  var bb = newBoxBuffer(tb.width, tb.height)
+  var bb = initBoxBuffer(tb.width, tb.height)
   bb.drawVertLine(x, y1, y2, doubleStyle)
   tb.write(bb)
 
 proc drawRect*(tb: var TerminalBuffer, x1, y1, x2, y2: int,
                doubleStyle: bool = false) =
   ## Convenience method to draw a rectangle into a terminal buffer directly.
-  var bb = newBoxBuffer(tb.width, tb.height)
+  var bb = initBoxBuffer(tb.width, tb.height)
   bb.drawRect(x1, y1, x2, y2, doubleStyle)
   tb.write(bb)
