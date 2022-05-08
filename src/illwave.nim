@@ -911,7 +911,7 @@ proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
 
 proc slice*(tb: TerminalBuffer, x: int, y: int, width: Natural, height: Natural): TerminalBuffer =
   result = tb
-  result.slice = (x, y, width, height)
+  result.slice = (tb.slice.x + x, tb.slice.y + y, width, height)
 
 func width*(tb: TerminalBuffer): Natural =
   ## Returns the width of the terminal buffer.
