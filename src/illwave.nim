@@ -1028,14 +1028,14 @@ proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
   ## the current text attributes. Lines do not wrap and attempting to write
   ## outside the extents of the buffer will not raise an error; the output
   ## will be just cropped to the extents of the buffer.
-  var currX = x
+  var currX = tb.slice.x + x
   for ch in runes(s):
     var c = TerminalChar(ch: ch, fg: tb.currFg, bg: tb.currBg,
                          style: tb.currStyle)
-    tb[currX, y] = c
+    tb[currX, tb.slice.y + y] = c
     inc(currX)
   tb.currX = currX
-  tb.currY = y
+  tb.currY = tb.slice.y + y
 
 proc write*(tb: var TerminalBuffer, s: string) =
   ## Writes `s` into the terminal buffer at the current cursor position using
