@@ -815,7 +815,7 @@ type
     ## the character buffer directly with the index operators.
     width: int
     height: int
-    slice*: tuple[x: int, y: int, width: Natural, height: Natural]
+    slice: tuple[x: int, y: int, width: Natural, height: Natural]
     buf: ref seq[TerminalChar]
     currBg: BackgroundColor
     currFg: ForegroundColor
