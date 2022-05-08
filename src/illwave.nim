@@ -843,6 +843,9 @@ proc `==`*(a, b: ForegroundColor): bool =
     of TrueColor:
       a.trueColor.ord == b.trueColor.ord
 
+proc `==`*(a, b: TerminalBuffer): bool =
+  a.buf[] == b.buf[]
+
 proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   ## Index operator to write a character into the terminal buffer at the
   ## specified location. Does nothing if the location is outside of the
