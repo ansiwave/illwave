@@ -815,7 +815,7 @@ type
     ## the character buffer directly with the index operators.
     width: int
     height: int
-    slice: tuple[x: int, y: int, width: Natural, height: Natural]
+    slice*: tuple[x: int, y: int, width: Natural, height: Natural]
     buf: ref seq[TerminalChar]
     currBg: BackgroundColor
     currFg: ForegroundColor
@@ -911,10 +911,6 @@ proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
   ## Creates a new terminal buffer of a fixed `width` and `height`.
   result.initTerminalBuffer(width, height)
   result.clear()
-
-proc slice*(tb: TerminalBuffer, x: int, y: int, width: Natural, height: Natural): TerminalBuffer =
-  result = tb
-  result.slice = (tb.slice.x + x, tb.slice.y + y, width, height)
 
 func width*(tb: TerminalBuffer): Natural =
   ## Returns the width of the terminal buffer.
