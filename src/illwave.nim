@@ -850,15 +850,21 @@ proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   ## Index operator to write a character into the terminal buffer at the
   ## specified location. Does nothing if the location is outside of the
   ## extents of the terminal buffer.
-  if x < tb.width and y < tb.height and x >= 0 and y >= 0:
-    tb.buf[tb.width * y + x] = ch
+  let
+    xx = x + tb.slice.x
+    yy = y + tb.slice.y
+  if xx < tb.width and yy < tb.height and xx >= 0 and yy >= 0:
+    tb.buf[tb.width * yy + xx] = ch
 
 proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   ## Index operator to read a character from the terminal buffer at the
   ## specified location. Returns nil if the location is outside of the extents
   ## of the terminal buffer.
-  if x < tb.width and y < tb.height and x >= 0 and y >= 0:
-    result = tb.buf[tb.width * y + x]
+  let
+    xx = x + tb.slice.x
+    yy = y + tb.slice.y
+  if xx < tb.width and yy < tb.height and xx >= 0 and yy >= 0:
+    result = tb.buf[tb.width * yy + xx]
 
 proc toColor*(r: uint8, g: uint8, b: uint8): colors.Color =
   let rgb: uint =
@@ -1024,14 +1030,14 @@ proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
   ## the current text attributes. Lines do not wrap and attempting to write
   ## outside the extents of the buffer will not raise an error; the output
   ## will be just cropped to the extents of the buffer.
-  var currX = tb.slice.x + x
+  var currX = x
   for ch in runes(s):
     var c = TerminalChar(ch: ch, fg: tb.currFg, bg: tb.currBg,
                          style: tb.currStyle)
-    tb[currX, tb.slice.y + y] = c
+    tb[currX, y] = c
     inc(currX)
   tb.currX = currX
-  tb.currY = tb.slice.y + y
+  tb.currY = y
 
 proc write*(tb: var TerminalBuffer, s: string) =
   ## Writes `s` into the terminal buffer at the current cursor position using
@@ -1492,7 +1498,7 @@ proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: int,
   ## Convenience method to draw a single horizontal line into a terminal
   ## buffer directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  bb.drawHorizLine(tb.slice.x + x1, tb.slice.x + x2, tb.slice.y + y, doubleStyle)
+  bb.drawHorizLine(x1, x2, y, doubleStyle)
   tb.write(bb)
 
 proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: int,
@@ -1500,12 +1506,12 @@ proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: int,
   ## Convenience method to draw a single vertical line into a terminal buffer
   ## directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  bb.drawVertLine(tb.slice.x + x, tb.slice.y + y1, tb.slice.y + y2, doubleStyle)
+  bb.drawVertLine(x, y1, y2, doubleStyle)
   tb.write(bb)
 
 proc drawRect*(tb: var TerminalBuffer, x1, y1, x2, y2: int,
                doubleStyle: bool = false) =
   ## Convenience method to draw a rectangle into a terminal buffer directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  bb.drawRect(tb.slice.x + x1, tb.slice.y + y1, tb.slice.x + x2, tb.slice.y + y2, doubleStyle)
+  bb.drawRect(x1, y1, x2, y2, doubleStyle)
   tb.write(bb)
