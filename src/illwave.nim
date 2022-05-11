@@ -816,7 +816,7 @@ type
     width: int
     height: int
     slice*: tuple[x: int, y: int, width: Natural, height: Natural]
-    buf: ref seq[TerminalChar]
+    buf: ref seq[seq[TerminalChar]]
     currBg: BackgroundColor
     currFg: ForegroundColor
     currStyle: set[terminal.Style]
@@ -853,8 +853,8 @@ proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   let
     xx = x + tb.slice.x
     yy = y + tb.slice.y
-  if xx < tb.width and yy < tb.height and xx >= 0 and yy >= 0:
-    tb.buf[tb.width * yy + xx] = ch
+  if yy >= 0 and xx >= 0 and yy < tb.buf[].len and xx < tb.buf[yy].len:
+    tb.buf[yy][xx] = ch
 
 proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   ## Index operator to read a character from the terminal buffer at the
@@ -863,8 +863,8 @@ proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   let
     xx = x + tb.slice.x
     yy = y + tb.slice.y
-  if xx < tb.width and yy < tb.height and xx >= 0 and yy >= 0:
-    result = tb.buf[tb.width * yy + xx]
+  if yy >= 0 and xx >= 0 and yy < tb.buf[].len and xx < tb.buf[yy].len:
+    result = tb.buf[yy][xx]
 
 proc toColor*(r: uint8, g: uint8, b: uint8): colors.Color =
   let rgb: uint =
@@ -908,7 +908,9 @@ proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   tb.height = height
   tb.slice = (0, 0, width, height)
   new tb.buf
-  newSeq(tb.buf[], width * height)
+  newSeq(tb.buf[], height)
+  for line in tb.buf[].mitems:
+    newSeq(line, width)
   tb.currBg = BackgroundColor(kind: SimpleColor, simpleColor: terminal.bgDefault)
   tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: terminal.fgDefault)
   tb.currStyle = {}
