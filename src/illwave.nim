@@ -874,6 +874,8 @@ proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
     xx = x
     yy = y
   if tb.kind == Slice:
+    if x < 0 or y < 0 or (not tb.grow and (x > tb.slice.width or y > tb.slice.height)):
+      return
     xx += tb.slice.x
     yy += tb.slice.y
   if yy >= 0 and xx >= 0:
@@ -891,6 +893,8 @@ proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
     xx = x
     yy = y
   if tb.kind == Slice:
+    if x < 0 or y < 0 or (not tb.grow and (x > tb.slice.width or y > tb.slice.height)):
+      return
     xx += tb.slice.x
     yy += tb.slice.y
   if yy >= 0 and xx >= 0 and yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
