@@ -1008,9 +1008,9 @@ proc contains*(tb: TerminalBuffer, mouse: MouseInfo): bool =
     x += tb.slice.x
     y += tb.slice.y
   mouse.x >= x and
-    mouse.x <= x + tb.width and
+    mouse.x <= x + tb.width - 1 and
     mouse.y >= y and
-    mouse.y <= y + tb.height
+    mouse.y <= y + tb.height - 1
 
 proc copyFrom*(tb: var TerminalBuffer,
                src: TerminalBuffer, srcX, srcY, width, height: Natural,
