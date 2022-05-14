@@ -832,6 +832,105 @@ type
     currX: int
     currY: int
 
+proc `==`*(a, b: BackgroundColor): bool =
+  if a.kind != b.kind:
+    false
+  else:
+    case a.kind:
+    of SimpleColor:
+      a.simpleColor == b.simpleColor
+    of TrueColor:
+      a.trueColor.ord == b.trueColor.ord
+
+proc `==`*(a, b: ForegroundColor): bool =
+  if a.kind != b.kind:
+    false
+  else:
+    case a.kind:
+    of SimpleColor:
+      a.simpleColor == b.simpleColor
+    of TrueColor:
+      a.trueColor.ord == b.trueColor.ord
+
+proc `==`*(a, b: TerminalBuffer): bool =
+  a.buf[] == b.buf[]
+
+proc outOfBounds(tb: TerminalBuffer, x, y: int): bool =
+  case tb.kind:
+  of Full:
+    return x < 0 or y < 0 or y >= tb.buf[].chars.len or x >= tb.buf[].chars[y].len
+  of Slice:
+    var
+      xx = x + tb.slice.x
+      yy = y + tb.slice.y
+    if y < 0 and not tb.grow.top:
+      return true
+    if x < 0 and not tb.grow.left:
+      return true
+    if (y >= tb.slice.height or yy >= tb.buf[].height) and not tb.grow.bottom:
+      return true
+    if (x >= tb.slice.width or xx >= tb.buf[].width) and not tb.grow.right:
+      return true
+  return false
+
+proc grow(tb: var TerminalBuffer, x, y: int) =
+  if x >= tb.buf[].width:
+    tb.buf[].width = x+1
+  if y >= tb.buf[].height:
+    tb.buf[].height = y+1
+  const space = TerminalChar(ch: " ".toRunes[0])
+  while y >= tb.buf[].chars.len:
+    tb.buf[].chars.add(sequtils.repeat(space, tb.buf[].width))
+  while x >= tb.buf[].chars[y].len:
+    tb.buf[].chars[y].add(space)
+
+proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
+  ## Index operator to write a character into the terminal buffer at the
+  ## specified location. Does nothing if the location is outside of the
+  ## extents of the terminal buffer.
+  if outOfBounds(tb, x, y):
+    return
+  var
+    xx = x
+    yy = y
+  if tb.kind == Slice:
+    xx += tb.slice.x
+    yy += tb.slice.y
+  if yy >= 0 and xx >= 0:
+    if yy >= tb.buf[].chars.len or xx >= tb.buf[].chars[yy].len:
+      grow(tb, xx, yy)
+    tb.buf[].chars[yy][xx] = ch
+
+proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
+  ## Index operator to read a character from the terminal buffer at the
+  ## specified location. Returns nil if the location is outside of the extents
+  ## of the terminal buffer.
+  if outOfBounds(tb, x, y):
+    return
+  var
+    xx = x
+    yy = y
+  if tb.kind == Slice:
+    xx += tb.slice.x
+    yy += tb.slice.y
+  if yy >= 0 and xx >= 0 and yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
+    result = tb.buf[].chars[yy][xx]
+
+proc toColor*(r: uint8, g: uint8, b: uint8): colors.Color =
+  let rgb: uint =
+    r.uint.rotateLeftBits(16) +
+    g.uint.rotateLeftBits(8) +
+    b.uint
+  colors.Color(rgb)
+
+proc fromColor*(color: colors.Color): tuple[r: uint8, g: uint8, b: uint8] =
+  let n: uint = cast[uint](color)
+  (
+    r: n.rotateRightBits(16).uint8,
+    g: n.rotateRightBits(8).uint8,
+    b: n.uint8,
+  )
+
 func x*(tb: TerminalBuffer): int =
   case tb.kind:
   of Full:
@@ -867,101 +966,6 @@ func height*(tb: TerminalBuffer): Natural =
       0
   of Slice:
     tb.slice.height
-
-proc `==`*(a, b: BackgroundColor): bool =
-  if a.kind != b.kind:
-    false
-  else:
-    case a.kind:
-    of SimpleColor:
-      a.simpleColor == b.simpleColor
-    of TrueColor:
-      a.trueColor.ord == b.trueColor.ord
-
-proc `==`*(a, b: ForegroundColor): bool =
-  if a.kind != b.kind:
-    false
-  else:
-    case a.kind:
-    of SimpleColor:
-      a.simpleColor == b.simpleColor
-    of TrueColor:
-      a.trueColor.ord == b.trueColor.ord
-
-proc `==`*(a, b: TerminalBuffer): bool =
-  a.buf[] == b.buf[]
-
-proc grow(tb: var TerminalBuffer, x, y: int) =
-  if x >= tb.buf[].width:
-    tb.buf[].width = x+1
-  if y >= tb.buf[].height:
-    tb.buf[].height = y+1
-  const space = TerminalChar(ch: " ".toRunes[0])
-  while y >= tb.buf[].chars.len:
-    tb.buf[].chars.add(sequtils.repeat(space, tb.buf[].width))
-  while x >= tb.buf[].chars[y].len:
-    tb.buf[].chars[y].add(space)
-
-proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
-  ## Index operator to write a character into the terminal buffer at the
-  ## specified location. Does nothing if the location is outside of the
-  ## extents of the terminal buffer.
-  if y < 0 and not tb.grow.top:
-    return
-  if x < 0 and not tb.grow.left:
-    return
-  if y >= tb.height and not tb.grow.bottom:
-    return
-  if x >= tb.width and not tb.grow.right:
-    return
-  var
-    xx = x
-    yy = y
-  if tb.kind == Slice:
-    xx += tb.slice.x
-    yy += tb.slice.y
-  if yy >= 0 and xx >= 0:
-    if yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
-      tb.buf[].chars[yy][xx] = ch
-    else:
-      grow(tb, xx, yy)
-      tb.buf[].chars[yy][xx] = ch
-
-proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
-  ## Index operator to read a character from the terminal buffer at the
-  ## specified location. Returns nil if the location is outside of the extents
-  ## of the terminal buffer.
-  if y < 0 and not tb.grow.top:
-    return
-  if x < 0 and not tb.grow.left:
-    return
-  if y >= tb.height and not tb.grow.bottom:
-    return
-  if x >= tb.width and not tb.grow.right:
-    return
-  var
-    xx = x
-    yy = y
-  if tb.kind == Slice:
-    xx += tb.slice.x
-    yy += tb.slice.y
-  if yy >= 0 and xx >= 0 and yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
-    result = tb.buf[].chars[yy][xx]
-
-proc toColor*(r: uint8, g: uint8, b: uint8): colors.Color =
-  let rgb: uint =
-    r.uint.rotateLeftBits(16) +
-    g.uint.rotateLeftBits(8) +
-    b.uint
-  colors.Color(rgb)
-
-proc fromColor*(color: colors.Color): tuple[r: uint8, g: uint8, b: uint8] =
-  let n: uint = cast[uint](color)
-  (
-    r: n.rotateRightBits(16).uint8,
-    g: n.rotateRightBits(8).uint8,
-    b: n.uint8,
-  )
 
 proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: int, ch: string = " ") =
   ## Fills a rectangular area with the `ch` character using the current text
@@ -1003,7 +1007,7 @@ proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
   result.initTerminalBuffer(width, height)
   result.clear()
 
-proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, grow: tuple[top: bool, right: bool, bottom: bool, left: bool] = (false, false, false, false)): TerminalBuffer =
+proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, grow: tuple[top: bool, right: bool, bottom: bool, left: bool]): TerminalBuffer =
   result = tb
   result.kind = Slice
   result.slice.x += x
@@ -1011,6 +1015,9 @@ proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, grow: tuple[t
   result.slice.width = width
   result.slice.height = height
   result.grow = grow
+
+proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural): TerminalBuffer =
+  slice(tb, x, y, width, height, tb.grow)
 
 proc contains*(tb: TerminalBuffer, mouse: MouseInfo): bool =
   var
@@ -1590,15 +1597,8 @@ macro write*(tb: var TerminalBuffer, args: varargs[typed]): untyped =
       result.add(newCall(bindSym"writeProcessArg", tb, item))
 
 proc grow(tb: TerminalBuffer, bb: var BoxBuffer, x, y: int) =
-  if y < 0 and not tb.grow.top:
+  if outOfBounds(tb, x, y):
     return
-  if x < 0 and not tb.grow.left:
-    return
-  if x >= bb.width and not tb.grow.right:
-    return
-  if y >= bb.height and not tb.grow.bottom:
-    return
-
   if x >= bb.width:
     bb.width = x+1
   if y >= bb.height:
