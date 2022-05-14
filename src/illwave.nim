@@ -824,13 +824,49 @@ type
     ## the character buffer directly with the index operators.
     kind: TerminalBufferKind
     slice: tuple[x: int, y: int, width: Natural, height: Natural]
-    grow: bool
+    grow: tuple[top: bool, right: bool, bottom: bool, left: bool]
     buf: ref InternalBuffer
     currBg: BackgroundColor
     currFg: ForegroundColor
     currStyle: set[terminal.Style]
     currX: int
     currY: int
+
+func x*(tb: TerminalBuffer): int =
+  case tb.kind:
+  of Full:
+    0
+  of Slice:
+    tb.slice.x
+
+func y*(tb: TerminalBuffer): int =
+  case tb.kind:
+  of Full:
+    0
+  of Slice:
+    tb.slice.y
+
+func width*(tb: TerminalBuffer): Natural =
+  ## Returns the width of the terminal buffer.
+  case tb.kind:
+  of Full:
+    if tb.buf != nil:
+      tb.buf[].width
+    else:
+      0
+  of Slice:
+    tb.slice.width
+
+func height*(tb: TerminalBuffer): Natural =
+  ## Returns the height of the terminal buffer.
+  case tb.kind:
+  of Full:
+    if tb.buf != nil:
+      tb.buf[].height
+    else:
+      0
+  of Slice:
+    tb.slice.height
 
 proc `==`*(a, b: BackgroundColor): bool =
   if a.kind != b.kind:
@@ -870,18 +906,24 @@ proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
   ## Index operator to write a character into the terminal buffer at the
   ## specified location. Does nothing if the location is outside of the
   ## extents of the terminal buffer.
+  if y < 0 and not tb.grow.top:
+    return
+  if x < 0 and not tb.grow.left:
+    return
+  if y >= tb.height and not tb.grow.bottom:
+    return
+  if x >= tb.width and not tb.grow.right:
+    return
   var
     xx = x
     yy = y
   if tb.kind == Slice:
-    if x < 0 or y < 0 or (not tb.grow and (x > tb.slice.width or y > tb.slice.height)):
-      return
     xx += tb.slice.x
     yy += tb.slice.y
   if yy >= 0 and xx >= 0:
     if yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
       tb.buf[].chars[yy][xx] = ch
-    elif tb.grow:
+    else:
       grow(tb, xx, yy)
       tb.buf[].chars[yy][xx] = ch
 
@@ -889,12 +931,18 @@ proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
   ## Index operator to read a character from the terminal buffer at the
   ## specified location. Returns nil if the location is outside of the extents
   ## of the terminal buffer.
+  if y < 0 and not tb.grow.top:
+    return
+  if x < 0 and not tb.grow.left:
+    return
+  if y >= tb.height and not tb.grow.bottom:
+    return
+  if x >= tb.width and not tb.grow.right:
+    return
   var
     xx = x
     yy = y
   if tb.kind == Slice:
-    if x < 0 or y < 0 or (not tb.grow and (x > tb.slice.width or y > tb.slice.height)):
-      return
     xx += tb.slice.x
     yy += tb.slice.y
   if yy >= 0 and xx >= 0 and yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
@@ -914,42 +962,6 @@ proc fromColor*(color: colors.Color): tuple[r: uint8, g: uint8, b: uint8] =
     g: n.rotateRightBits(8).uint8,
     b: n.uint8,
   )
-
-func x*(tb: TerminalBuffer): int =
-  case tb.kind:
-  of Full:
-    0
-  of Slice:
-    tb.slice.x
-
-func y*(tb: TerminalBuffer): int =
-  case tb.kind:
-  of Full:
-    0
-  of Slice:
-    tb.slice.y
-
-func width*(tb: TerminalBuffer): Natural =
-  ## Returns the width of the terminal buffer.
-  case tb.kind:
-  of Full:
-    if tb.buf != nil:
-      tb.buf[].width
-    else:
-      0
-  of Slice:
-    tb.slice.width
-
-func height*(tb: TerminalBuffer): Natural =
-  ## Returns the height of the terminal buffer.
-  case tb.kind:
-  of Full:
-    if tb.buf != nil:
-      tb.buf[].height
-    else:
-      0
-  of Slice:
-    tb.slice.height
 
 proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: int, ch: string = " ") =
   ## Fills a rectangular area with the `ch` character using the current text
@@ -972,11 +984,10 @@ proc clear*(tb: var TerminalBuffer, ch: string = " ") =
   ## the `fgNone` and `bgNone` attributes.
   tb.fill(0, 0, tb.width-1, tb.height-1, ch)
 
-proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural, grow: bool = false) =
+proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   ## Initializes a new terminal buffer object of a fixed `width` and `height`.
   tb.kind = Full
   tb.slice = (0, 0, width, height)
-  tb.grow = grow
   new tb.buf
   tb.buf[].width = width
   tb.buf[].height = height
@@ -987,18 +998,19 @@ proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural, grow: bo
   tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: terminal.fgDefault)
   tb.currStyle = {}
 
-proc initTerminalBuffer*(width, height: Natural, grow: bool = false): TerminalBuffer =
+proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
   ## Creates a new terminal buffer of a fixed `width` and `height`.
-  result.initTerminalBuffer(width, height, grow)
+  result.initTerminalBuffer(width, height)
   result.clear()
 
-proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural): TerminalBuffer =
+proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, grow: tuple[top: bool, right: bool, bottom: bool, left: bool] = (false, false, false, false)): TerminalBuffer =
   result = tb
   result.kind = Slice
   result.slice.x += x
   result.slice.y += y
   result.slice.width = width
   result.slice.height = height
+  result.grow = grow
 
 proc contains*(tb: TerminalBuffer, mouse: MouseInfo): bool =
   var
@@ -1577,9 +1589,16 @@ macro write*(tb: var TerminalBuffer, args: varargs[typed]): untyped =
     for item in args.items:
       result.add(newCall(bindSym"writeProcessArg", tb, item))
 
-proc grow(bb: var BoxBuffer, x, y: int) =
-  if y < 0 or x < 0:
+proc grow(tb: TerminalBuffer, bb: var BoxBuffer, x, y: int) =
+  if y < 0 and not tb.grow.top:
     return
+  if x < 0 and not tb.grow.left:
+    return
+  if x >= bb.width and not tb.grow.right:
+    return
+  if y >= bb.height and not tb.grow.bottom:
+    return
+
   if x >= bb.width:
     bb.width = x+1
   if y >= bb.height:
@@ -1595,8 +1614,7 @@ proc drawHorizLine*(tb: var TerminalBuffer, x1, x2, y: int,
   ## Convenience method to draw a single horizontal line into a terminal
   ## buffer directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  if tb.grow:
-    grow(bb, max(x1, x2), y)
+  grow(tb, bb, max(x1, x2), y)
   bb.drawHorizLine(x1, x2, y, doubleStyle)
   tb.write(bb)
 
@@ -1605,8 +1623,7 @@ proc drawVertLine*(tb: var TerminalBuffer, x, y1, y2: int,
   ## Convenience method to draw a single vertical line into a terminal buffer
   ## directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  if tb.grow:
-    grow(bb, x, max(y1, y2))
+  grow(tb, bb, x, max(y1, y2))
   bb.drawVertLine(x, y1, y2, doubleStyle)
   tb.write(bb)
 
@@ -1614,7 +1631,6 @@ proc drawRect*(tb: var TerminalBuffer, x1, y1, x2, y2: int,
                doubleStyle: bool = false) =
   ## Convenience method to draw a rectangle into a terminal buffer directly.
   var bb = initBoxBuffer(tb.width, tb.height)
-  if tb.grow:
-    grow(bb, max(x1, x2), max(y1, y2))
+  grow(tb, bb, max(x1, x2), max(y1, y2))
   bb.drawRect(x1, y1, x2, y2, doubleStyle)
   tb.write(bb)
