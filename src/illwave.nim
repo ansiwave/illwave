@@ -915,6 +915,20 @@ proc fromColor*(color: colors.Color): tuple[r: uint8, g: uint8, b: uint8] =
     b: n.uint8,
   )
 
+func x*(tb: TerminalBuffer): int =
+  case tb.kind:
+  of Full:
+    0
+  of Slice:
+    tb.slice.x
+
+func y*(tb: TerminalBuffer): int =
+  case tb.kind:
+  of Full:
+    0
+  of Slice:
+    tb.slice.y
+
 func width*(tb: TerminalBuffer): Natural =
   ## Returns the width of the terminal buffer.
   case tb.kind:
