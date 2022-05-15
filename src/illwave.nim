@@ -824,7 +824,7 @@ type
     ## the character buffer directly with the index operators.
     kind: TerminalBufferKind
     slice: tuple[x: int, y: int, width: Natural, height: Natural]
-    grow: tuple[top: bool, right: bool, bottom: bool, left: bool]
+    bounds: tuple[x: int, y: int, width: int, height: int]
     buf: ref InternalBuffer
     currBg: BackgroundColor
     currFg: ForegroundColor
@@ -863,13 +863,13 @@ proc outOfBounds(tb: TerminalBuffer, x, y: int): bool =
     var
       xx = x + tb.slice.x
       yy = y + tb.slice.y
-    if y < 0 and not tb.grow.top:
+    if tb.bounds.y >= 0 and yy < tb.bounds.y:
       return true
-    if x < 0 and not tb.grow.left:
+    if tb.bounds.x >= 0 and xx < tb.bounds.x:
       return true
-    if (y >= tb.slice.height or yy >= tb.buf[].height) and not tb.grow.bottom:
+    if tb.bounds.height >= 0 and yy >= max(0, tb.bounds.y) + tb.bounds.height:
       return true
-    if (x >= tb.slice.width or xx >= tb.buf[].width) and not tb.grow.right:
+    if tb.bounds.width >= 0 and xx >= max(0, tb.bounds.x) + tb.bounds.width:
       return true
   return false
 
@@ -992,6 +992,7 @@ proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   ## Initializes a new terminal buffer object of a fixed `width` and `height`.
   tb.kind = Full
   tb.slice = (0, 0, width, height)
+  tb.bounds = (0, 0, width, height)
   new tb.buf
   tb.buf[].width = width
   tb.buf[].height = height
@@ -1007,17 +1008,31 @@ proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
   result.initTerminalBuffer(width, height)
   result.clear()
 
-proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, grow: tuple[top: bool, right: bool, bottom: bool, left: bool]): TerminalBuffer =
+proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, bounds: tuple[x: int, y: int, width: int, height: int]): TerminalBuffer =
+  result = tb
+  result.kind = Slice
+  if bounds.x < 0:
+    result.bounds.x = bounds.x
+  else:
+    result.bounds.x = result.slice.x + bounds.x
+  if bounds.y < 0:
+    result.bounds.y = bounds.y
+  else:
+    result.bounds.y = result.slice.y + bounds.y
+  result.bounds.width = bounds.width
+  result.bounds.height = bounds.height
+  result.slice.x += x
+  result.slice.y += y
+  result.slice.width = width
+  result.slice.height = height
+
+proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural): TerminalBuffer =
   result = tb
   result.kind = Slice
   result.slice.x += x
   result.slice.y += y
   result.slice.width = width
   result.slice.height = height
-  result.grow = grow
-
-proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural): TerminalBuffer =
-  slice(tb, x, y, width, height, tb.grow)
 
 proc contains*(tb: TerminalBuffer, mouse: MouseInfo): bool =
   var
