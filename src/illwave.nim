@@ -4,6 +4,28 @@ from terminal import nil
 from sequtils import nil
 
 type
+  SimpleForegroundColor* = enum   ## Foreground colors
+    fgNone = 0,             ## default
+    fgBlack = 30,           ## black
+    fgRed,                  ## red
+    fgGreen,                ## green
+    fgYellow,               ## yellow
+    fgBlue,                 ## blue
+    fgMagenta,              ## magenta
+    fgCyan,                 ## cyan
+    fgWhite                 ## white
+
+  SimpleBackgroundColor* = enum   ## Background colors
+    bgNone = 0,             ## default (transparent)
+    bgBlack = 40,           ## black
+    bgRed,                  ## red
+    bgGreen,                ## green
+    bgYellow,               ## yellow
+    bgBlue,                 ## blue
+    bgMagenta,              ## magenta
+    bgCyan,                 ## cyan
+    bgWhite                 ## white
+
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
     Mouse  = (-2, "Mouse")
     None   = (-1, "None"),
@@ -782,14 +804,14 @@ type
   BackgroundColor* = object
     case kind*: ColorKind
     of SimpleColor:
-      simpleColor*: terminal.BackgroundColor
+      simpleColor*: SimpleBackgroundColor
     of TrueColor:
       trueColor*: colors.Color
 
   ForegroundColor* = object
     case kind*: ColorKind
     of SimpleColor:
-      simpleColor*: terminal.ForegroundColor
+      simpleColor*: SimpleForegroundColor
     of TrueColor:
       trueColor*: colors.Color
 
@@ -999,8 +1021,8 @@ proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   newSeq(tb.buf[].chars, height)
   for line in tb.buf[].chars.mitems:
     newSeq(line, width)
-  tb.currBg = BackgroundColor(kind: SimpleColor, simpleColor: terminal.bgDefault)
-  tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: terminal.fgDefault)
+  tb.currBg = BackgroundColor(kind: SimpleColor, simpleColor: bgNone)
+  tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: fgNone)
   tb.currStyle = {}
 
 proc initTerminalBuffer*(width, height: Natural): TerminalBuffer =
@@ -1097,10 +1119,10 @@ proc setBackgroundColor*(tb: var TerminalBuffer, bg: BackgroundColor) =
 proc setForegroundColor*(tb: var TerminalBuffer, fg: ForegroundColor) =
   tb.currFg = fg
 
-proc setBackgroundColor*(tb: var TerminalBuffer, bg: terminal.BackgroundColor) =
+proc setBackgroundColor*(tb: var TerminalBuffer, bg: SimpleBackgroundColor) =
   tb.currBg = BackgroundColor(kind: SimpleColor, simpleColor: bg)
 
-proc setForegroundColor*(tb: var TerminalBuffer, fg: terminal.ForegroundColor) =
+proc setForegroundColor*(tb: var TerminalBuffer, fg: SimpleForegroundColor) =
   tb.currFg = ForegroundColor(kind: SimpleColor, simpleColor: fg)
 
 proc setBackgroundColor*(tb: var TerminalBuffer, bg: colors.Color) =
@@ -1140,8 +1162,8 @@ func getStyle*(tb: var TerminalBuffer): set[terminal.Style] =
 proc resetAttributes*(tb: var TerminalBuffer) =
   ## Resets the current text attributes to `bgNone`, `fgWhite` and clears
   ## all style flags.
-  tb.setBackgroundColor(BackgroundColor(kind: SimpleColor, simpleColor: terminal.bgDefault))
-  tb.setForegroundColor(terminal.fgWhite)
+  tb.setBackgroundColor(BackgroundColor(kind: SimpleColor, simpleColor: bgNone))
+  tb.setForegroundColor(fgWhite)
   tb.setStyle({})
 
 proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
@@ -1170,30 +1192,34 @@ var
   gCurrStyle {.threadvar.}: set[terminal.Style]
 
 proc setAttribs(c: TerminalChar) =
-  if c.bg.kind == SimpleColor and c.fg.kind == SimpleColor and (c.bg.simpleColor == terminal.bgDefault or c.fg.simpleColor == terminal.fgDefault or c.style == {}):
+  if c.bg.kind == SimpleColor and c.fg.kind == SimpleColor and (c.bg.simpleColor == bgNone or c.fg.simpleColor == fgNone or c.style == {}):
     terminal.resetAttributes()
     gCurrBg = c.bg
     gCurrFg = c.fg
     gCurrStyle = c.style
-    terminal.setBackgroundColor(gCurrBg.simpleColor)
-    terminal.setForegroundColor(gCurrFg.simpleColor)
+    if gCurrBg.simpleColor != bgNone:
+      terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg.simpleColor))
+    if gCurrFg.simpleColor != fgNone:
+      terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg.simpleColor))
     if gCurrStyle != {}:
       terminal.setStyle(gCurrStyle)
   else:
-    if c.bg != gCurrBg:
-      gCurrBg = c.bg
-      case c.bg.kind:
-      of SimpleColor:
-        terminal.setBackgroundColor(c.bg.simpleColor)
-      of TrueColor:
+    if c.bg.kind == TrueColor:
+      if c.bg != gCurrBg:
+        gCurrBg = c.bg
         terminal.setBackgroundColor(c.bg.trueColor)
-    if c.fg != gCurrFg:
-      gCurrFg = c.fg
-      case c.fg.kind:
-      of SimpleColor:
-        terminal.setForegroundColor(c.fg.simpleColor)
-      of TrueColor:
-        terminal.setForegroundColor(c.fg.trueColor)
+    elif c.bg.kind == SimpleColor:
+      if c.bg != gCurrBg:
+        gCurrBg = c.bg
+        terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg.simpleColor))
+    if c.fg.kind == TrueColor:
+      if c.fg != gCurrFg:
+        gCurrFg = c.fg
+        terminal.setForegroundColor(c.bg.trueColor)
+    elif c.fg.kind == SimpleColor:
+      if c.fg != gCurrFg:
+        gCurrFg = c.fg
+        terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg.simpleColor))
     if c.style != gCurrStyle:
       gCurrStyle = c.style
       terminal.setStyle(gCurrStyle)
@@ -1583,10 +1609,10 @@ template writeProcessArg(tb: var TerminalBuffer, style: terminal.Style) =
 template writeProcessArg(tb: var TerminalBuffer, style: set[terminal.Style]) =
   tb.setStyle(style)
 
-template writeProcessArg(tb: var TerminalBuffer, color: terminal.ForegroundColor) =
+template writeProcessArg(tb: var TerminalBuffer, color: SimpleForegroundColor) =
   tb.setForegroundColor(color)
 
-template writeProcessArg(tb: var TerminalBuffer, color: terminal.BackgroundColor) =
+template writeProcessArg(tb: var TerminalBuffer, color: SimpleBackgroundColor) =
   tb.setBackgroundColor(color)
 
 template writeProcessArg(tb: var TerminalBuffer, cmd: TerminalCmd) =
