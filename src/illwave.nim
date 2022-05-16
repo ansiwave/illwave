@@ -630,7 +630,7 @@ proc exitFullScreen() =
       terminal.eraseScreen()
   else:
     terminal.eraseScreen()
-    setCursorPos(0, 0)
+    terminal.setCursorPos(0, 0)
 
 when defined(posix):
   proc enableMouse() =
