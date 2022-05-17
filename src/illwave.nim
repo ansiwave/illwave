@@ -13,7 +13,7 @@ type
     fgBlue,                 ## blue
     fgMagenta,              ## magenta
     fgCyan,                 ## cyan
-    fgWhite                 ## white
+    fgWhite,                ## white
 
   SimpleBackgroundColor* = enum   ## Background colors
     bgNone = 0,             ## default (transparent)
@@ -24,7 +24,7 @@ type
     bgBlue,                 ## blue
     bgMagenta,              ## magenta
     bgCyan,                 ## cyan
-    bgWhite                 ## white
+    bgWhite,                ## white
 
   Key* {.pure.} = enum      ## Supported single key presses and key combinations
     Mouse  = (-2, "Mouse")
@@ -1197,29 +1197,25 @@ proc setAttribs(c: TerminalChar) =
     gCurrBg = c.bg
     gCurrFg = c.fg
     gCurrStyle = c.style
-    if gCurrBg.simpleColor != bgNone:
-      terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg.simpleColor))
-    if gCurrFg.simpleColor != fgNone:
-      terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg.simpleColor))
+    terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg.simpleColor))
+    terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg.simpleColor))
     if gCurrStyle != {}:
       terminal.setStyle(gCurrStyle)
   else:
-    if c.bg.kind == TrueColor:
-      if c.bg != gCurrBg:
-        gCurrBg = c.bg
+    if c.bg != gCurrBg:
+      gCurrBg = c.bg
+      case c.bg.kind:
+      of SimpleColor:
+        terminal.setBackgroundColor(cast[terminal.BackgroundColor](c.bg.simpleColor))
+      of TrueColor:
         terminal.setBackgroundColor(c.bg.trueColor)
-    elif c.bg.kind == SimpleColor:
-      if c.bg != gCurrBg:
-        gCurrBg = c.bg
-        terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg.simpleColor))
-    if c.fg.kind == TrueColor:
-      if c.fg != gCurrFg:
-        gCurrFg = c.fg
-        terminal.setForegroundColor(c.bg.trueColor)
-    elif c.fg.kind == SimpleColor:
-      if c.fg != gCurrFg:
-        gCurrFg = c.fg
-        terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg.simpleColor))
+    if c.fg != gCurrFg:
+      gCurrFg = c.fg
+      case c.fg.kind:
+      of SimpleColor:
+        terminal.setForegroundColor(cast[terminal.ForegroundColor](c.fg.simpleColor))
+      of TrueColor:
+        terminal.setForegroundColor(c.fg.trueColor)
     if c.style != gCurrStyle:
       gCurrStyle = c.style
       terminal.setStyle(gCurrStyle)
