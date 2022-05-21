@@ -227,7 +227,6 @@ func toKey(c: int): Key =
 
 var gIllwaveInitialized* = false
 var gFullScreen = false
-var gFullRedrawNextFrame = false
 
 when defined(windows):
   import encodings, unicode, winlean
@@ -443,7 +442,6 @@ else:  # OS X & Linux
     signal(SIGCONT, SIGCONT_handler)
     signal(SIGTSTP, SIGTSTP_handler)
 
-    gFullRedrawNextFrame = true
     consoleInit()
     terminal.hideCursor()
 
@@ -1160,7 +1158,6 @@ proc write*(tb: var TerminalBuffer, s: string) =
   write(tb, tb.currX, tb.currY, s)
 
 var
-  gPrevTerminalBuffer {.threadvar.}: TerminalBuffer
   gCurrBg {.threadvar.}: BackgroundColor
   gCurrFg {.threadvar.}: ForegroundColor
   gCurrBgTruecolor {.threadvar.}: colors.Color
@@ -1229,7 +1226,7 @@ proc displayFull(tb: TerminalBuffer) =
     flushBuf()
 
 
-proc displayDiff(tb: TerminalBuffer) =
+proc displayDiff(tb: TerminalBuffer, prevTb: TerminalBuffer) =
   var
     buf = ""
     bufXPos, bufYPos: Natural
@@ -1254,7 +1251,7 @@ proc displayDiff(tb: TerminalBuffer) =
     bufYPos = y
     for x in 0..<tb.width:
       let c = tb[x,y]
-      if c != gPrevTerminalBuffer[x,y] or c.forceWrite:
+      if c != prevTb[x,y] or c.forceWrite:
         if c.bg != gCurrBg or c.fg != gCurrFg or c.bgTruecolor != gCurrBgTruecolor or c.fgTruecolor != gCurrFgTruecolor or c.style != gCurrStyle:
           flushBuf()
           bufXPos = x
@@ -1266,37 +1263,25 @@ proc displayDiff(tb: TerminalBuffer) =
     flushBuf()
 
 
-var gDoubleBufferingEnabled = true
-
-proc setDoubleBuffering*(enabled: bool) =
-  ## Enables or disables double buffering (enabled by default).
-  gDoubleBufferingEnabled = enabled
-
-proc hasDoubleBuffering*(): bool =
-  ## Returns `true` if double buffering is enabled.
-  ##
-  ## If the module is not intialised, `IllwaveError` is raised.
-  checkInit()
-  result = gDoubleBufferingEnabled
-
 proc display*(tb: TerminalBuffer) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
-  if not gFullRedrawNextFrame and gDoubleBufferingEnabled:
-    if tb.width == gPrevTerminalBuffer.width and
-       tb.height == gPrevTerminalBuffer.height:
-      displayDiff(tb)
-      gPrevTerminalBuffer.copyFrom(tb)
-    else:
-      displayFull(tb)
-      gPrevTerminalBuffer = tb
-    flushFile(stdout)
+  displayFull(tb)
+  flushFile(stdout)
+
+proc display*(tb: TerminalBuffer, prevTb: TerminalBuffer) =
+  ## Outputs the contents of the terminal buffer to the actual terminal.
+  ##
+  ## If the module is not intialised, `IllwaveError` is raised.
+  checkInit()
+  if tb.width == prevTb.width and
+     tb.height == prevTb.height:
+    displayDiff(tb, prevTb)
   else:
     displayFull(tb)
-    flushFile(stdout)
-    gFullRedrawNextFrame = false
+  flushFile(stdout)
 
 type BoxChar = int
 
