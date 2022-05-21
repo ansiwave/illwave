@@ -836,8 +836,16 @@ type
     currFgTruecolor*: colors.Color
     currBgTruecolor*: colors.Color
     currStyle: set[terminal.Style]
+    currAttribs: Attribs
     currX: int
     currY: int
+
+  Attribs = object
+    bg: BackgroundColor
+    fg: ForegroundColor
+    bgTruecolor: colors.Color
+    fgTruecolor: colors.Color
+    style: set[terminal.Style]
 
 proc `==`*(a, b: colors.Color): bool =
   a.ord == b.ord
@@ -1157,49 +1165,42 @@ proc write*(tb: var TerminalBuffer, s: string) =
   ## the current text attributes.
   write(tb, tb.currX, tb.currY, s)
 
-var
-  gCurrBg {.threadvar.}: BackgroundColor
-  gCurrFg {.threadvar.}: ForegroundColor
-  gCurrBgTruecolor {.threadvar.}: colors.Color
-  gCurrFgTruecolor {.threadvar.}: colors.Color
-  gCurrStyle {.threadvar.}: set[terminal.Style]
-
-proc setAttribs(c: TerminalChar) =
+proc setAttribs(c: TerminalChar, attribs: var Attribs) =
   if (c.bgTruecolor.ord == 0 and c.fgTruecolor.ord == 0) and (c.bg == bgNone or c.fg == fgNone or c.style == {}):
     terminal.resetAttributes()
-    gCurrBg = c.bg
-    gCurrFg = c.fg
-    gCurrBgTruecolor = c.bgTruecolor
-    gCurrFgTruecolor = c.fgTruecolor
-    gCurrStyle = c.style
-    if gCurrBg != bgNone:
-      terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg))
-    if gCurrFg != fgNone:
-      terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg))
-    if gCurrStyle != {}:
-      terminal.setStyle(gCurrStyle)
+    attribs.bg = c.bg
+    attribs.fg = c.fg
+    attribs.bgTruecolor = c.bgTruecolor
+    attribs.fgTruecolor = c.fgTruecolor
+    attribs.style = c.style
+    if attribs.bg != bgNone:
+      terminal.setBackgroundColor(cast[terminal.BackgroundColor](attribs.bg))
+    if attribs.fg != fgNone:
+      terminal.setForegroundColor(cast[terminal.ForegroundColor](attribs.fg))
+    if attribs.style != {}:
+      terminal.setStyle(attribs.style)
   else:
     if c.bgTruecolor.ord != 0:
-      if c.bgTruecolor != gCurrBgTruecolor:
-        gCurrBgTruecolor = c.bgTruecolor
-        gCurrBg = bgNone
+      if c.bgTruecolor != attribs.bgTruecolor:
+        attribs.bgTruecolor = c.bgTruecolor
+        attribs.bg = bgNone
         terminal.setBackgroundColor(c.bgTruecolor)
-    elif c.bg != gCurrBg:
-      gCurrBgTruecolor = colors.Color(0)
-      gCurrBg = c.bg
-      terminal.setBackgroundColor(cast[terminal.BackgroundColor](gCurrBg))
+    elif c.bg != attribs.bg:
+      attribs.bgTruecolor = colors.Color(0)
+      attribs.bg = c.bg
+      terminal.setBackgroundColor(cast[terminal.BackgroundColor](attribs.bg))
     if c.fgTruecolor.ord != 0:
-      if c.fgTruecolor != gCurrFgTruecolor:
-        gCurrFgTruecolor = c.fgTruecolor
-        gCurrFg = fgNone
+      if c.fgTruecolor != attribs.fgTruecolor:
+        attribs.fgTruecolor = c.fgTruecolor
+        attribs.fg = fgNone
         terminal.setForegroundColor(c.fgTruecolor)
-    elif c.fg != gCurrFg:
-      gCurrFgTruecolor = colors.Color(0)
-      gCurrFg = c.fg
-      terminal.setForegroundColor(cast[terminal.ForegroundColor](gCurrFg))
-    if c.style != gCurrStyle:
-      gCurrStyle = c.style
-      terminal.setStyle(gCurrStyle)
+    elif c.fg != attribs.fg:
+      attribs.fgTruecolor = colors.Color(0)
+      attribs.fg = c.fg
+      terminal.setForegroundColor(cast[terminal.ForegroundColor](attribs.fg))
+    if c.style != attribs.style:
+      attribs.style = c.style
+      terminal.setStyle(attribs.style)
 
 proc setPos(x, y: int) =
   terminal.setCursorPos(x, y)
@@ -1207,7 +1208,7 @@ proc setPos(x, y: int) =
 proc setXPos(x: int) =
   terminal.setCursorXPos(x)
 
-proc displayFull(tb: TerminalBuffer) =
+proc displayFull(tb: var TerminalBuffer) =
   var buf = ""
 
   proc flushBuf() =
@@ -1219,14 +1220,14 @@ proc displayFull(tb: TerminalBuffer) =
     setPos(0, y)
     for x in 0..<tb.width:
       let c = tb[x,y]
-      if c.bg != gCurrBg or c.fg != gCurrFg or c.bgTruecolor != gCurrBgTruecolor or c.fgTruecolor != gCurrFgTruecolor or c.style != gCurrStyle:
+      if c.bg != tb.currAttribs.bg or c.fg != tb.currAttribs.fg or c.bgTruecolor != tb.currAttribs.bgTruecolor or c.fgTruecolor != tb.currAttribs.fgTruecolor or c.style != tb.currAttribs.style:
         flushBuf()
-        setAttribs(c)
+        setAttribs(c, tb.currAttribs)
       buf &= $c.ch
     flushBuf()
 
 
-proc displayDiff(tb: TerminalBuffer, prevTb: TerminalBuffer) =
+proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
   var
     buf = ""
     bufXPos, bufYPos: Natural
@@ -1252,10 +1253,10 @@ proc displayDiff(tb: TerminalBuffer, prevTb: TerminalBuffer) =
     for x in 0..<tb.width:
       let c = tb[x,y]
       if c != prevTb[x,y] or c.forceWrite:
-        if c.bg != gCurrBg or c.fg != gCurrFg or c.bgTruecolor != gCurrBgTruecolor or c.fgTruecolor != gCurrFgTruecolor or c.style != gCurrStyle:
+        if c.bg != tb.currAttribs.bg or c.fg != tb.currAttribs.fg or c.bgTruecolor != tb.currAttribs.bgTruecolor or c.fgTruecolor != tb.currAttribs.fgTruecolor or c.style != tb.currAttribs.style:
           flushBuf()
           bufXPos = x
-          setAttribs(c)
+          setAttribs(c, tb.currAttribs)
         buf &= $c.ch
       else:
         flushBuf()
@@ -1263,7 +1264,7 @@ proc displayDiff(tb: TerminalBuffer, prevTb: TerminalBuffer) =
     flushBuf()
 
 
-proc display*(tb: TerminalBuffer) =
+proc display*(tb: var TerminalBuffer) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
@@ -1271,13 +1272,14 @@ proc display*(tb: TerminalBuffer) =
   displayFull(tb)
   flushFile(stdout)
 
-proc display*(tb: TerminalBuffer, prevTb: TerminalBuffer) =
+proc display*(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   if tb.width == prevTb.width and
      tb.height == prevTb.height:
+    tb.currAttribs = prevTb.currAttribs
     displayDiff(tb, prevTb)
   else:
     displayFull(tb)
