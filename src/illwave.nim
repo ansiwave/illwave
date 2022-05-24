@@ -212,7 +212,6 @@ type
     sdNone, sdUp, sdDown
 
 var gMouseInfo* = MouseInfo()
-var gMouse: bool = false
 
 proc getMouse*(): MouseInfo =
   ## When `init(mouse=true)` all mouse movements and clicks are captured.
@@ -226,7 +225,6 @@ func toKey(c: int): Key =
     result = Key.None
 
 var gIllwaveInitialized* = false
-var gFullScreen = false
 
 when defined(windows):
   import encodings, unicode, winlean
@@ -332,12 +330,9 @@ when defined(windows):
 
   proc consoleInit() =
     discard getConsoleMode(getStdHandle(STD_INPUT_HANDLE), gOldConsoleModeInput.addr)
-    if gFullScreen:
-      if getConsoleMode(getStdHandle(STD_OUTPUT_HANDLE), gOldConsoleMode.addr) != 0:
-        var mode = gOldConsoleMode and (not ENABLE_WRAP_AT_EOL_OUTPUT)
-        discard setConsoleMode(getStdHandle(STD_OUTPUT_HANDLE), mode)
-    else:
-      discard getConsoleMode(getStdHandle(STD_OUTPUT_HANDLE), gOldConsoleMode.addr)
+    if getConsoleMode(getStdHandle(STD_OUTPUT_HANDLE), gOldConsoleMode.addr) != 0:
+      var mode = gOldConsoleMode and (not ENABLE_WRAP_AT_EOL_OUTPUT)
+      discard setConsoleMode(getStdHandle(STD_OUTPUT_HANDLE), mode)
 
   proc consoleDeinit() =
     if gOldConsoleMode != 0:
@@ -672,7 +667,7 @@ else:
   proc disableMouse(hConsoleInput: Handle, oldConsoleMode: DWORD) =
     discard setConsoleMode(hConsoleInput, oldConsoleMode) # TODO: REMOVE MOUSE OPTION ONLY?
 
-proc init*(fullScreen: bool = true, mouse: bool = false) =
+proc init*(fullScreen: bool = true) =
   ## Initializes the terminal and enables non-blocking keyboard input. Needs
   ## to be called before doing anything with the library.
   ##
@@ -682,16 +677,13 @@ proc init*(fullScreen: bool = true, mouse: bool = false) =
   ## If the module is already intialised, `IllwaveError` is raised.
   if gIllwaveInitialized:
     raise newException(IllwaveError, "Illwave already initialized")
-  gFullScreen = fullScreen
-  if gFullScreen: enterFullScreen()
+  enterFullScreen()
 
   consoleInit()
-  gMouse = mouse
-  if gMouse:
-    when defined(posix):
-      enableMouse()
-    else:
-      enableMouse(getStdHandle(STD_INPUT_HANDLE))
+  when defined(posix):
+    enableMouse()
+  else:
+    enableMouse(getStdHandle(STD_INPUT_HANDLE))
   gIllwaveInitialized = true
   terminal.resetAttributes()
 
@@ -705,12 +697,11 @@ proc deinit*() =
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
-  if gFullScreen: exitFullScreen()
-  if gMouse:
-    when defined(posix):
-      disableMouse()
-    else:
-      disableMouse(getStdHandle(STD_INPUT_HANDLE), gOldConsoleModeInput)
+  exitFullScreen()
+  when defined(posix):
+    disableMouse()
+  else:
+    disableMouse(getStdHandle(STD_INPUT_HANDLE), gOldConsoleModeInput)
   consoleDeinit()
   gIllwaveInitialized = false
   terminal.resetAttributes()
