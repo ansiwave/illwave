@@ -539,7 +539,7 @@ else:  # OS X & Linux
     result = parseInt(str)
 
   proc fillMouseInfo(keyBuf: array[KeySequenceMaxLen, int], mouseInfo: var MouseInfo) =
-    let parts = splitInputs(keyBuf, keyBuf.len)
+    let parts = splitInputs(keyBuf, keyBuf.len, mouseInfo)
     mouseInfo.x = parts[1].getPos() - 1
     mouseInfo.y = parts[2].getPos() - 1
     let bitset = parts[0].getPos()
@@ -593,7 +593,7 @@ else:  # OS X & Linux
             key = toKey(keyCode)
     result = key
 
-  proc getKeyAsync(): Key =
+  proc getKeyAsync(mouseInfo: var MouseInfo): Key =
     var i = 0
     while kbhit() > 0 and i < KeySequenceMaxLen:
       var ret = read(0, keyBuf[i].addr, 1)
@@ -604,7 +604,7 @@ else:  # OS X & Linux
     if i == 0:  # nothing read
       result = Key.None
     else:
-      result = parseKey(i)
+      result = parseKey(i, mouseInfo)
 
   template put(s: string) = stdout.write s
 
@@ -765,11 +765,13 @@ proc getKey*(mouseInfo: var MouseInfo): Key =
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
-  result = getKeyAsync()
   when defined(windows):
+    result = getKeyAsync()
     if result == Key.None:
       if hasMouseInput(mouseInfo):
         return Key.Mouse
+  else:
+    result = getKeyAsync(mouseInfo)
 
 proc getKey*(): Key =
   var mouseInfo: MouseInfo
