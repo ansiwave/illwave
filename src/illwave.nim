@@ -1,4 +1,4 @@
-import macros, os, unicode, bitops
+import os, unicode, bitops
 from colors import nil
 from terminal import nil
 from sequtils import nil
@@ -819,8 +819,6 @@ type
     currBgTruecolor*: colors.Color
     currStyle: set[terminal.Style]
     currAttribs: Attribs
-    currX: int
-    currY: int
 
   Attribs = object
     bg: BackgroundColor
@@ -1058,19 +1056,6 @@ proc copyFrom*(tb: var TerminalBuffer, src: TerminalBuffer) =
   ## destination buffer, the copied area is clipped to the destination area.
   tb.copyFrom(src, 0, 0, src.width, src.height, 0, 0)
 
-proc setCursorPos*(tb: var TerminalBuffer, x, y: int) =
-  ## Sets the current cursor position.
-  tb.currX = x
-  tb.currY = y
-
-proc setCursorXPos*(tb: var TerminalBuffer, x: int) =
-  ## Sets the current x cursor position.
-  tb.currX = x
-
-proc setCursorYPos*(tb: var TerminalBuffer, y: int) =
-  ## Sets the current y cursor position.
-  tb.currY = y
-
 proc setBackgroundColor*(tb: var TerminalBuffer, bg: BackgroundColor) =
   tb.currBg = bg
   tb.currBgTruecolor = colors.Color(0)
@@ -1090,18 +1075,6 @@ proc setForegroundColor*(tb: var TerminalBuffer, fg: colors.Color) =
 proc setStyle*(tb: var TerminalBuffer, style: set[terminal.Style]) =
   ## Sets the current style flags.
   tb.currStyle = style
-
-func getCursorPos*(tb: TerminalBuffer): tuple[x: int, y: int] =
-  ## Returns the current cursor position.
-  result = (tb.currX, tb.currY)
-
-func getCursorXPos*(tb: TerminalBuffer): int =
-  ## Returns the current x cursor position.
-  result = tb.currX
-
-func getCursorYPos*(tb: TerminalBuffer): int =
-  ## Returns the current y cursor position.
-  result = tb.currY
 
 func getBackgroundColor*(tb: var TerminalBuffer): BackgroundColor =
   ## Returns the current background color.
@@ -1139,13 +1112,6 @@ proc write*(tb: var TerminalBuffer, x, y: int, s: string) =
                          style: tb.currStyle, fgTruecolor: tb.currFgTruecolor, bgTruecolor: tb.currBgTruecolor)
     tb[currX, y] = c
     inc(currX)
-  tb.currX = currX
-  tb.currY = y
-
-proc write*(tb: var TerminalBuffer, s: string) =
-  ## Writes `s` into the terminal buffer at the current cursor position using
-  ## the current text attributes.
-  write(tb, tb.currX, tb.currY, s)
 
 proc setAttribs(c: TerminalChar, attribs: var Attribs) =
   if (c.bgTruecolor.ord == 0 and c.fgTruecolor.ord == 0) and (c.bg == bgNone or c.fg == fgNone or c.style == {}):
@@ -1568,24 +1534,6 @@ template writeProcessArg(tb: var TerminalBuffer, color: BackgroundColor) =
 template writeProcessArg(tb: var TerminalBuffer, cmd: TerminalCmd) =
   when cmd == resetStyle:
     tb.resetAttributes()
-
-macro write*(tb: var TerminalBuffer, args: varargs[typed]): untyped =
-  ## Special version of `write` that allows to intersperse text literals with
-  ## set attribute commands.
-  result = newNimNode(nnkStmtList)
-
-  if args.len >= 3 and
-     args[0].typeKind() == ntyInt and args[1].typeKind() == ntyInt:
-
-    let x = args[0]
-    let y = args[1]
-    result.add(newCall(bindSym"setCursorPos", tb, x, y))
-    for i in 2..<args.len:
-      let item = args[i]
-      result.add(newCall(bindSym"writeProcessArg", tb, item))
-  else:
-    for item in args.items:
-      result.add(newCall(bindSym"writeProcessArg", tb, item))
 
 proc grow(tb: TerminalBuffer, bb: var BoxBuffer, x, y: int) =
   if outOfBounds(tb, x, y):
