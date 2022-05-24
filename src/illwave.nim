@@ -211,13 +211,6 @@ type
   ScrollDirection* {.pure.} = enum
     sdNone, sdUp, sdDown
 
-var gMouseInfo* = MouseInfo()
-
-proc getMouse*(): MouseInfo =
-  ## When `init(mouse=true)` all mouse movements and clicks are captured.
-  ## Call this to get the actual mouse informations. Also see `MouseInfo`.
-  return gMouseInfo
-
 func toKey(c: int): Key =
   try:
     result = Key(c)
@@ -517,7 +510,7 @@ else:  # OS X & Linux
       ord(Key.F12):       @["\e[24~"],
     }.toTable
 
-  proc splitInputs(inp: openarray[int], max: Natural): seq[seq[int]] =
+  proc splitInputs(inp: openarray[int], max: Natural, mouseInfo: var MouseInfo): seq[seq[int]] =
     ## splits the input buffer to extract mouse coordinates
     var parts: seq[seq[int]] = @[]
     var cur: seq[int] = @[]
@@ -525,12 +518,12 @@ else:  # OS X & Linux
       if ch == ord('M'):
         # Button press
         parts.add(cur)
-        gMouseInfo.action = mbaPressed
+        mouseInfo.action = mbaPressed
         break
       elif ch == ord('m'):
         # Button release
         parts.add(cur)
-        gMouseInfo.action = mbaReleased
+        mouseInfo.action = mbaReleased
         break
       elif ch != ord(';'):
         cur.add(ch)
@@ -545,31 +538,31 @@ else:  # OS X & Linux
       str &= $(ch.chr)
     result = parseInt(str)
 
-  proc fillGlobalMouseInfo(keyBuf: array[KeySequenceMaxLen, int]) =
+  proc fillMouseInfo(keyBuf: array[KeySequenceMaxLen, int], mouseInfo: var MouseInfo) =
     let parts = splitInputs(keyBuf, keyBuf.len)
-    gMouseInfo.x = parts[1].getPos() - 1
-    gMouseInfo.y = parts[2].getPos() - 1
+    mouseInfo.x = parts[1].getPos() - 1
+    mouseInfo.y = parts[2].getPos() - 1
     let bitset = parts[0].getPos()
-    gMouseInfo.ctrl = bitset.testBit(4)
-    gMouseInfo.shift = bitset.testBit(2)
-    gMouseInfo.move = bitset.testBit(5)
+    mouseInfo.ctrl = bitset.testBit(4)
+    mouseInfo.shift = bitset.testBit(2)
+    mouseInfo.move = bitset.testBit(5)
     case ((bitset.uint8 shl 6) shr 6).int
-    of 0: gMouseInfo.button = MouseButton.mbLeft
-    of 1: gMouseInfo.button = MouseButton.mbMiddle
-    of 2: gMouseInfo.button = MouseButton.mbRight
+    of 0: mouseInfo.button = MouseButton.mbLeft
+    of 1: mouseInfo.button = MouseButton.mbMiddle
+    of 2: mouseInfo.button = MouseButton.mbRight
     else:
-      gMouseInfo.action = MouseButtonAction.mbaNone
-      gMouseInfo.button = MouseButton.mbNone # Move sends 3, but we ignore
-    gMouseInfo.scroll = bitset.testBit(6)
-    if gMouseInfo.scroll:
+      mouseInfo.action = MouseButtonAction.mbaNone
+      mouseInfo.button = MouseButton.mbNone # Move sends 3, but we ignore
+    mouseInfo.scroll = bitset.testBit(6)
+    if mouseInfo.scroll:
       # on scroll button=3 is reported, but we want no button pressed
-      gMouseInfo.button = MouseButton.mbNone
-      if bitset.testBit(0): gMouseInfo.scrollDir = ScrollDirection.sdDown
-      else: gMouseInfo.scrollDir = ScrollDirection.sdUp
+      mouseInfo.button = MouseButton.mbNone
+      if bitset.testBit(0): mouseInfo.scrollDir = ScrollDirection.sdDown
+      else: mouseInfo.scrollDir = ScrollDirection.sdUp
     else:
-      gMouseInfo.scrollDir = ScrollDirection.sdNone
+      mouseInfo.scrollDir = ScrollDirection.sdNone
 
-  proc parseKey(charsRead: int): Key =
+  proc parseKey(charsRead: int, mouseInfo: var MouseInfo): Key =
     # Inspired by
     # https://github.com/mcandre/charm/blob/master/lib/charm.c
     var key = Key.None
@@ -587,7 +580,7 @@ else:  # OS X & Linux
         key = toKey(ch)
 
     elif charsRead > 3 and keyBuf[0] == 27 and keyBuf[1] == 91 and keyBuf[2] == 60: # TODO what are these :)
-      fillGlobalMouseInfo(keyBuf)
+      fillMouseInfo(keyBuf, mouseInfo)
       return Key.Mouse
 
     else:
@@ -671,9 +664,6 @@ proc init*(fullScreen: bool = true) =
   ## Initializes the terminal and enables non-blocking keyboard input. Needs
   ## to be called before doing anything with the library.
   ##
-  ## If mouse is set to true, all mouse actions are captured.
-  ## Call `getMouse()` in your main loop to actually retrieve them.
-  ##
   ## If the module is already intialised, `IllwaveError` is raised.
   if gIllwaveInitialized:
     raise newException(IllwaveError, "Illwave already initialized")
@@ -708,53 +698,51 @@ proc deinit*() =
   terminal.showCursor()
 
 when defined(windows):
-  var gLastMouseInfo = MouseInfo()
+  proc fillMouseInfo(inputRecord: INPUT_RECORD, mouseInfo: var MouseInfo) =
+    let lastMouseInfo = mouseInfo
 
-  proc fillGlobalMouseInfo(inputRecord: INPUT_RECORD) =
-    gMouseInfo.x = inputRecord.Event.MouseEvent.dwMousePosition.X
-    gMouseInfo.y = inputRecord.Event.MouseEvent.dwMousePosition.Y
+    mouseInfo.x = inputRecord.Event.MouseEvent.dwMousePosition.X
+    mouseInfo.y = inputRecord.Event.MouseEvent.dwMousePosition.Y
 
     case inputRecord.Event.MouseEvent.dwButtonState
     of FROM_LEFT_1ST_BUTTON_PRESSED:
-      gMouseInfo.button = mbLeft
+      mouseInfo.button = mbLeft
     of FROM_LEFT_2ND_BUTTON_PRESSED:
-      gMouseInfo.button = mbMiddle
+      mouseInfo.button = mbMiddle
     of RIGHTMOST_BUTTON_PRESSED:
-      gMouseInfo.button = mbRight
+      mouseInfo.button = mbRight
     else:
-      gMouseInfo.button = mbNone
+      mouseInfo.button = mbNone
 
-    if gMouseInfo.button != mbNone:
-      gMouseInfo.action = MouseButtonAction.mbaPressed
-    elif gMouseInfo.button == mbNone and gLastMouseInfo.button != mbNone:
-      gMouseInfo.action = MouseButtonAction.mbaReleased
+    if mouseInfo.button != mbNone:
+      mouseInfo.action = MouseButtonAction.mbaPressed
+    elif mouseInfo.button == mbNone and lastMouseInfo.button != mbNone:
+      mouseInfo.action = MouseButtonAction.mbaReleased
     else:
-      gMouseInfo.action = MouseButtonAction.mbaNone
+      mouseInfo.action = MouseButtonAction.mbaNone
 
-    if gLastMouseInfo.x != gMouseInfo.x or gLastMouseInfo.y != gMouseInfo.y:
-      gMouseInfo.move = true
+    if lastMouseInfo.x != mouseInfo.x or lastMouseInfo.y != mouseInfo.y:
+      mouseInfo.move = true
     else:
-      gMouseInfo.move = false
+      mouseInfo.move = false
 
     if bitand(inputRecord.Event.MouseEvent.dwEventFlags, MOUSE_WHEELED) == MOUSE_WHEELED:
-      gMouseInfo.scroll = true
+      mouseInfo.scroll = true
       if inputRecord.Event.MouseEvent.dwButtonState.testBit(31):
-        gMouseInfo.scrollDir = ScrollDirection.sdDown
+        mouseInfo.scrollDir = ScrollDirection.sdDown
       else:
-        gMouseInfo.scrollDir = ScrollDirection.sdUp
+        mouseInfo.scrollDir = ScrollDirection.sdUp
     else:
-      gMouseInfo.scroll = false
-      gMouseInfo.scrollDir = ScrollDirection.sdNone
+      mouseInfo.scroll = false
+      mouseInfo.scrollDir = ScrollDirection.sdNone
 
-    gMouseInfo.ctrl = bitand(inputRecord.Event.MouseEvent.dwControlKeyState, LEFT_CTRL_PRESSED) == LEFT_CTRL_PRESSED or
+    mouseInfo.ctrl = bitand(inputRecord.Event.MouseEvent.dwControlKeyState, LEFT_CTRL_PRESSED) == LEFT_CTRL_PRESSED or
         bitand(inputRecord.Event.MouseEvent.dwControlKeyState, RIGHT_CTRL_PRESSED) == RIGHT_CTRL_PRESSED
 
-    gMouseInfo.shift = bitand(inputRecord.Event.MouseEvent.dwControlKeyState, SHIFT_PRESSED) == SHIFT_PRESSED
-
-    gLastMouseInfo = gMouseInfo
+    mouseInfo.shift = bitand(inputRecord.Event.MouseEvent.dwControlKeyState, SHIFT_PRESSED) == SHIFT_PRESSED
 
 
-  proc hasMouseInput(): bool =
+  proc hasMouseInput(mouseInfo: var MouseInfo): bool =
     var buffer: array[INPUT_BUFFER_LEN, INPUT_RECORD]
     var numberOfEventsRead: DWORD
     var toRead: int = 0
@@ -766,25 +754,26 @@ when defined(windows):
     if toRead == 0: return false
     discard readConsoleInput(getStdHandle(STD_INPUT_HANDLE), buffer.addr, toRead.DWORD, numberOfEventsRead.addr)
     if buffer[numberOfEventsRead - 1].EventType == MOUSE_EVENT:
-      fillGlobalMouseInfo(buffer[numberOfEventsRead - 1])
+      fillMouseInfo(buffer[numberOfEventsRead - 1], mouseInfo)
       return true
     else:
       return false
 
-proc getKey*(): Key =
+proc getKey*(mouseInfo: var MouseInfo): Key =
   ## Reads the next keystroke in a non-blocking manner. If there are no
   ## keypress events in the buffer, `Key.None` is returned.
-  ##
-  ## If a mouse event was captured `Key.Mouse` is returned.
-  ## Call `getMouse()` to get the MouseInfo.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   result = getKeyAsync()
   when defined(windows):
     if result == Key.None:
-      if hasMouseInput():
+      if hasMouseInput(mouseInfo):
         return Key.Mouse
+
+proc getKey*(): Key =
+  var mouseInfo: MouseInfo
+  getKey(mouseInfo)
 
 type
   TerminalChar* = object
