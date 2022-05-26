@@ -812,12 +812,12 @@ type
     kind: TerminalBufferKind
     slice: tuple[x: int, y: int, width: Natural, height: Natural]
     bounds: tuple[x: int, y: int, width: int, height: int]
-    buf: ref InternalBuffer
-    currBg: BackgroundColor
-    currFg: ForegroundColor
+    buf*: ref InternalBuffer
+    currBg*: BackgroundColor
+    currFg*: ForegroundColor
     currFgTruecolor*: colors.Color
     currBgTruecolor*: colors.Color
-    currStyle: set[terminal.Style]
+    currStyle*: set[terminal.Style]
     currAttribs: Attribs
 
   Attribs = object
