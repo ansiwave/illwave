@@ -809,9 +809,9 @@ type
     ##
     ## Write to the terminal buffer with `TerminalBuffer.write()` or access
     ## the character buffer directly with the index operators.
-    kind: TerminalBufferKind
-    slice: tuple[x: int, y: int, width: Natural, height: Natural]
-    bounds: tuple[x: int, y: int, width: int, height: int]
+    kind*: TerminalBufferKind
+    slice*: tuple[x: int, y: int, width: Natural, height: Natural]
+    bounds*: tuple[x: int, y: int, width: int, height: int]
     buf*: ref InternalBuffer
     currBg*: BackgroundColor
     currFg*: ForegroundColor
