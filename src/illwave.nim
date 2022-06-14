@@ -810,7 +810,8 @@ type
     ## Write to the terminal buffer with `TerminalBuffer.write()` or access
     ## the character buffer directly with the index operators.
     kind*: TerminalBufferKind
-    slice*: tuple[x: int, y: int, width: Natural, height: Natural]
+    slice*: ref tuple[x: int, y: int, width: Natural, height: Natural]
+    parentSlices*: seq[ref tuple[x: int, y: int, width: Natural, height: Natural]]
     bounds*: tuple[x: int, y: int, width: int, height: int]
     buf*: ref InternalBuffer
     currBg*: BackgroundColor
@@ -839,8 +840,8 @@ proc outOfBounds(tb: TerminalBuffer, x, y: int): bool =
     return x < 0 or y < 0 or y >= tb.buf[].chars.len or x >= tb.buf[].chars[y].len
   of Slice:
     var
-      xx = x + tb.slice.x
-      yy = y + tb.slice.y
+      xx = x + tb.slice[].x
+      yy = y + tb.slice[].y
     if tb.bounds.y >= 0 and yy < tb.bounds.y:
       return true
     if tb.bounds.x >= 0 and xx < tb.bounds.x:
@@ -853,8 +854,14 @@ proc outOfBounds(tb: TerminalBuffer, x, y: int): bool =
 
 proc grow(tb: var TerminalBuffer, x, y: int) =
   if x >= tb.buf[].width:
+    tb.slice[].width = x - tb.slice[].x + 1
+    for parentSlice in tb.parentSlices:
+      parentSlice[].width = x - parentSlice[].x + 1
     tb.buf[].width = x+1
   if y >= tb.buf[].height:
+    tb.slice[].height = y - tb.slice[].y + 1
+    for parentSlice in tb.parentSlices:
+      parentSlice[].height = y - parentSlice[].y + 1
     tb.buf[].height = y+1
   const space = TerminalChar(ch: " ".toRunes[0])
   while y >= tb.buf[].chars.len:
@@ -872,8 +879,8 @@ proc `[]=`*(tb: var TerminalBuffer, x, y: int, ch: TerminalChar) =
     xx = x
     yy = y
   if tb.kind == Slice:
-    xx += tb.slice.x
-    yy += tb.slice.y
+    xx += tb.slice[].x
+    yy += tb.slice[].y
   if yy >= 0 and xx >= 0:
     if yy >= tb.buf[].chars.len or xx >= tb.buf[].chars[yy].len:
       grow(tb, xx, yy)
@@ -889,8 +896,8 @@ proc `[]`*(tb: TerminalBuffer, x, y: int): TerminalChar =
     xx = x
     yy = y
   if tb.kind == Slice:
-    xx += tb.slice.x
-    yy += tb.slice.y
+    xx += tb.slice[].x
+    yy += tb.slice[].y
   if yy >= 0 and xx >= 0 and yy < tb.buf[].chars.len and xx < tb.buf[].chars[yy].len:
     result = tb.buf[].chars[yy][xx]
 
@@ -914,14 +921,14 @@ func x*(tb: TerminalBuffer): int =
   of Full:
     0
   of Slice:
-    tb.slice.x
+    tb.slice[].x
 
 func y*(tb: TerminalBuffer): int =
   case tb.kind:
   of Full:
     0
   of Slice:
-    tb.slice.y
+    tb.slice[].y
 
 func width*(tb: TerminalBuffer): Natural =
   ## Returns the width of the terminal buffer.
@@ -932,7 +939,7 @@ func width*(tb: TerminalBuffer): Natural =
     else:
       0
   of Slice:
-    tb.slice.width
+    tb.slice[].width
 
 func height*(tb: TerminalBuffer): Natural =
   ## Returns the height of the terminal buffer.
@@ -943,7 +950,7 @@ func height*(tb: TerminalBuffer): Natural =
     else:
       0
   of Slice:
-    tb.slice.height
+    tb.slice[].height
 
 proc fill*(tb: var TerminalBuffer, x1, y1, x2, y2: int, ch: string = " ") =
   ## Fills a rectangular area with the `ch` character using the current text
@@ -969,7 +976,8 @@ proc clear*(tb: var TerminalBuffer, ch: string = " ") =
 proc initTerminalBuffer(tb: var TerminalBuffer, width, height: Natural) =
   ## Initializes a new terminal buffer object of a fixed `width` and `height`.
   tb.kind = Full
-  tb.slice = (0, 0, width, height)
+  new tb.slice
+  tb.slice[] = (0, 0, width, height)
   tb.bounds = (0, 0, width, height)
   new tb.buf
   tb.buf[].width = width
@@ -992,33 +1000,39 @@ proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural, bounds: tuple
   if bounds.x < 0:
     result.bounds.x = bounds.x
   else:
-    result.bounds.x = result.slice.x + bounds.x
+    result.bounds.x = result.slice[].x + bounds.x
   if bounds.y < 0:
     result.bounds.y = bounds.y
   else:
-    result.bounds.y = result.slice.y + bounds.y
+    result.bounds.y = result.slice[].y + bounds.y
   result.bounds.width = bounds.width
   result.bounds.height = bounds.height
-  result.slice.x += x
-  result.slice.y += y
-  result.slice.width = width
-  result.slice.height = height
+  new result.slice
+  result.slice[] = tb.slice[]
+  result.slice[].x += x
+  result.slice[].y += y
+  result.slice[].width = width
+  result.slice[].height = height
+  result.parentSlices.add(tb.slice)
 
 proc slice*(tb: TerminalBuffer, x, y: int, width, height: Natural): TerminalBuffer =
   result = tb
   result.kind = Slice
-  result.slice.x += x
-  result.slice.y += y
-  result.slice.width = width
-  result.slice.height = height
+  new result.slice
+  result.slice[] = tb.slice[]
+  result.slice[].x += x
+  result.slice[].y += y
+  result.slice[].width = width
+  result.slice[].height = height
+  result.parentSlices.add(tb.slice)
 
 proc contains*(tb: TerminalBuffer, mouse: MouseInfo): bool =
   var
     x = 0
     y = 0
   if tb.kind == Slice:
-    x += tb.slice.x
-    y += tb.slice.y
+    x += tb.slice[].x
+    y += tb.slice[].y
   mouse.x >= x and
     mouse.x <= x + tb.width - 1 and
     mouse.y >= y and
