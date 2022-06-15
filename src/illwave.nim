@@ -796,9 +796,9 @@ type
     cursor*: bool
 
   InternalBuffer = object
-    width: int
-    height: int
-    chars: seq[seq[TerminalChar]]
+    width*: int
+    height*: int
+    chars*: seq[seq[TerminalChar]]
 
   TerminalBufferKind* = enum
     Full, Slice,
