@@ -480,7 +480,7 @@ else:  # OS X & Linux
   const KeySequenceMaxLen = 100
 
   # global keycode buffer
-  var keyBuf {.threadvar.}: array[KeySequenceMaxLen, int]
+  var keyBuf: array[KeySequenceMaxLen, int]
 
   const
     keySequences = {
@@ -606,34 +606,34 @@ else:  # OS X & Linux
     else:
       result = parseKey(i, mouseInfo)
 
-  template put(s: string) = stdout.write s
+  template put(fd: File, s: string) = write(fd, s)
 
 when defined(posix):
   const
     XtermColor    = "xterm-color"
     Xterm256Color = "xterm-256color"
 
-proc enterFullScreen() =
+proc enterFullScreen(fd: File) =
   ## Enters full-screen mode (clears the terminal).
   when defined(posix):
     case getEnv("TERM"):
     of XtermColor:
-      stdout.write "\e7\e[?47h"
+      fd.write "\e7\e[?47h"
     of Xterm256Color:
-      stdout.write "\e[?1049h"
+      fd.write "\e[?1049h"
     else:
       terminal.eraseScreen()
   else:
     terminal.eraseScreen()
 
-proc exitFullScreen() =
+proc exitFullScreen(fd: File) =
   ## Exits full-screen mode (restores the previous contents of the terminal).
   when defined(posix):
     case getEnv("TERM"):
     of XtermColor:
-      stdout.write "\e[2J\e[?47l\e8"
+      fd.write "\e[2J\e[?47l\e8"
     of Xterm256Color:
-      stdout.write "\e[?1049l"
+      fd.write "\e[?1049l"
     else:
       terminal.eraseScreen()
   else:
@@ -660,14 +660,14 @@ else:
   proc disableMouse(hConsoleInput: Handle, oldConsoleMode: DWORD) =
     discard setConsoleMode(hConsoleInput, oldConsoleMode) # TODO: REMOVE MOUSE OPTION ONLY?
 
-proc init*(fullScreen: bool = true) =
+proc init*(fullScreen: bool = true, fd: File = stdout) =
   ## Initializes the terminal and enables non-blocking keyboard input. Needs
   ## to be called before doing anything with the library.
   ##
   ## If the module is already intialised, `IllwaveError` is raised.
   if gIllwaveInitialized:
     raise newException(IllwaveError, "Illwave already initialized")
-  enterFullScreen()
+  enterFullScreen(fd)
 
   consoleInit()
   when defined(posix):
@@ -681,13 +681,13 @@ proc checkInit() =
   if not gIllwaveInitialized:
     raise newException(IllwaveError, "Illwave not initialized")
 
-proc deinit*() =
+proc deinit*(fd: File = stdout) =
   ## Resets the terminal to its previous state. Needs to be called before
   ## exiting the application.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
-  exitFullScreen()
+  exitFullScreen(fd)
   when defined(posix):
     disableMouse()
   else:
@@ -1170,12 +1170,15 @@ proc setPos(x, y: int) =
 proc setXPos(x: int) =
   terminal.setCursorXPos(x)
 
-proc displayFull(tb: var TerminalBuffer) =
+proc displayFull(tb: var TerminalBuffer, fd: File) =
   var buf = ""
 
   proc flushBuf() =
     if buf.len > 0:
-      put buf
+      when defined(windows):
+        put(buf)
+      else:
+        put(fd, buf)
       buf = ""
 
   for y in 0 ..< min(tb.height, terminal.terminalHeight()):
@@ -1189,7 +1192,7 @@ proc displayFull(tb: var TerminalBuffer) =
     flushBuf()
 
 
-proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
+proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer, fd: File) =
   var
     buf = ""
     bufXPos, bufYPos: Natural
@@ -1205,7 +1208,10 @@ proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
       elif currXPos != bufXPos:
         currXPos = bufXPos
         setXPos(currXPos)
-      put buf
+      when defined(windows):
+        put(buf)
+      else:
+        put(fd, buf)
       inc(currXPos, buf.runeLen)
       buf = ""
 
@@ -1226,15 +1232,15 @@ proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
     flushBuf()
 
 
-proc display*(tb: var TerminalBuffer) =
+proc display*(tb: var TerminalBuffer, fd: File = stdout) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
-  displayFull(tb)
-  flushFile(stdout)
+  displayFull(tb, fd)
+  flushFile(fd)
 
-proc display*(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
+proc display*(tb: var TerminalBuffer, prevTb: TerminalBuffer, fd: File = stdout) =
   ## Outputs the contents of the terminal buffer to the actual terminal.
   ##
   ## If the module is not intialised, `IllwaveError` is raised.
@@ -1243,10 +1249,10 @@ proc display*(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
      tb.height == prevTb.height and
      tb.width <= terminal.terminalWidth():
     tb.currAttribs = prevTb.currAttribs
-    displayDiff(tb, prevTb)
+    displayDiff(tb, prevTb, fd)
   else:
-    displayFull(tb)
-  flushFile(stdout)
+    displayFull(tb, fd)
+  flushFile(fd)
 
 type BoxChar = int
 
@@ -1261,7 +1267,7 @@ const
   HORIZ = LEFT or RIGHT
   VERT  = UP or DOWN
 
-var gBoxCharsUnicode {.threadvar.}: array[64, string]
+var gBoxCharsUnicode: array[64, string]
 
 gBoxCharsUnicode[0] = " "
 
