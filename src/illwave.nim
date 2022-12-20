@@ -1178,9 +1178,9 @@ proc displayFull(tb: var TerminalBuffer) =
       put buf
       buf = ""
 
-  for y in 0..<tb.height:
+  for y in 0 ..< min(tb.height, terminal.terminalHeight()):
     setPos(0, y)
-    for x in 0..<tb.width:
+    for x in 0 ..< min(tb.width, terminal.terminalWidth()):
       let c = tb[x,y]
       if c.bg != tb.currAttribs.bg or c.fg != tb.currAttribs.fg or c.bgTruecolor != tb.currAttribs.bgTruecolor or c.fgTruecolor != tb.currAttribs.fgTruecolor or c.style != tb.currAttribs.style:
         flushBuf()
@@ -1209,10 +1209,10 @@ proc displayDiff(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
       inc(currXPos, buf.runeLen)
       buf = ""
 
-  for y in 0..<tb.height:
+  for y in 0 ..< min(tb.height, terminal.terminalHeight()):
     bufXPos = 0
     bufYPos = y
-    for x in 0..<tb.width:
+    for x in 0 ..< min(tb.width, terminal.terminalWidth()):
       let c = tb[x,y]
       if c != prevTb[x,y] or c.forceWrite:
         if c.bg != tb.currAttribs.bg or c.fg != tb.currAttribs.fg or c.bgTruecolor != tb.currAttribs.bgTruecolor or c.fgTruecolor != tb.currAttribs.fgTruecolor or c.style != tb.currAttribs.style:
@@ -1240,7 +1240,8 @@ proc display*(tb: var TerminalBuffer, prevTb: TerminalBuffer) =
   ## If the module is not intialised, `IllwaveError` is raised.
   checkInit()
   if tb.width == prevTb.width and
-     tb.height == prevTb.height:
+     tb.height == prevTb.height and
+     tb.width <= terminal.terminalWidth():
     tb.currAttribs = prevTb.currAttribs
     displayDiff(tb, prevTb)
   else:
